@@ -1,0 +1,16 @@
+node_modules/
+vendor/
+dist/
+build/
+coverage/
+.env
+.env.local
+.DS_Store
+*.log
+storage/logs/*.log
+otel-output/
+tmp/
+.phpunit.cache/
+.vite/
+sample-app/web/dist/
+

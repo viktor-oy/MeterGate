@@ -1,0 +1,8 @@
+{
+  "collection": "@nestjs/schematics",
+  "sourceRoot": "src/controlplane",
+  "compilerOptions": {
+    "deleteOutDir": true
+  }
+}
+

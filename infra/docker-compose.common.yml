@@ -1,0 +1,91 @@
+name: metergate
+
+x-metergate-env: &metergate-env
+  NODE_ENV: development
+  METERGATE_PORT: 3000
+  METERGATE_CONFIG_PATH: config/metergate.yml
+  METERGATE_KEY_HASH_SECRET: local-demo-secret-change-me
+  DATABASE_URL: postgresql://metergate:metergate@postgres:5432/metergate?schema=public
+  REDIS_URL: redis://redis:6379
+  OTEL_EXPORTER: stdout,file
+  OTEL_FILE_PATH: /app/otel-output/metergate.ndjson
+
+services:
+  postgres:
+    image: postgres:18.1-bookworm
+    environment:
+      POSTGRES_DB: metergate
+      POSTGRES_USER: metergate
+      POSTGRES_PASSWORD: metergate
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metergate -d metergate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8.2.2-bookworm
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  metergate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      <<: *metergate-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "3000-3010:3000"
+    volumes:
+      - ./otel-output:/app/otel-output
+
+  sample-api:
+    build:
+      context: ./sample-app/api
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://sample-api:8000
+      METERGATE_API_KEY_HEADER: x-api-key
+      METERGATE_PROVIDER_URL: http://metergate:3000/v1/check
+      OTEL_FILE_PATH: /app/storage/logs/sample-api-otel.ndjson
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./otel-output:/app/storage/logs
+
+  sample-web:
+    build:
+      context: ./sample-app/web
+      dockerfile: Dockerfile
+    environment:
+      VITE_PROXY_GRAPHQL_URL: http://localhost:3000/graphql
+      VITE_PROVIDER_GRAPHQL_URL: http://localhost:8000/graphql
+      VITE_DEMO_API_KEY: mg_demo_local_plaintext_key
+    ports:
+      - "5173:5173"
+    depends_on:
+      - metergate
+      - sample-api
+
+volumes:
+  postgres-data:
+  redis-data:

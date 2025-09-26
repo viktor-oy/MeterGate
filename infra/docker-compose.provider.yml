@@ -1,0 +1,13 @@
+services:
+  metergate:
+    environment:
+      METERGATE_MODE: provider
+
+  sample-api:
+    environment:
+      METERGATE_MODE: provider
+
+  sample-web:
+    environment:
+      VITE_METERGATE_MODE: provider
+
