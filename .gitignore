@@ -13,4 +13,4 @@ tmp/
 .phpunit.cache/
 .vite/
 sample-app/web/dist/
-
+/.data

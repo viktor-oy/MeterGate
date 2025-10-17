@@ -15,9 +15,9 @@ RUN npm run prisma:generate && npm run build
 FROM base AS runtime
 COPY package.json package-lock.json ./
 COPY prisma prisma
+COPY infra infra
 COPY --from=deps /app/node_modules node_modules
 COPY --from=build /app/dist dist
-COPY config config
 RUN mkdir -p /app/otel-output
 EXPOSE 3000
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/controlplane/main.js"]

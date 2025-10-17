@@ -45,6 +45,7 @@ const configSchema = z.object({
     z.string(),
     z.object({
       displayName: z.string().min(1),
+      shardCount: z.number().int().positive().default(1),
       groups: z.record(
         z.string(),
         z.object({
@@ -64,7 +65,7 @@ export class MeterGateConfigService {
   private readonly config: MeterGateConfig;
 
   constructor() {
-    const path = process.env.METERGATE_CONFIG_PATH ?? 'config/metergate.yml';
+    const path = process.env.METERGATE_CONFIG_PATH ?? 'infra/metergate.yml';
     const raw = load(readFileSync(path, 'utf8'));
     this.config = configSchema.parse(raw) as MeterGateConfig;
   }

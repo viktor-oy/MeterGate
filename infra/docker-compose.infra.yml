@@ -1,0 +1,32 @@
+name: metergate-infra
+
+services:
+  postgres:
+    image: postgres:17.4-bookworm
+    environment:
+      POSTGRES_DB: metergate
+      POSTGRES_USER: metergate
+      POSTGRES_PASSWORD: metergate
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../.data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metergate -d metergate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ../.data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+

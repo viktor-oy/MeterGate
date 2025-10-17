@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 const prisma = new PrismaClient();
 
-const demoApiKey = 'mg_demo_local_plaintext_key';
 const secret = process.env.METERGATE_KEY_HASH_SECRET ?? 'local-demo-secret-change-me';
 
 function hashApiKey(apiKey: string): string {
@@ -11,14 +12,24 @@ function hashApiKey(apiKey: string): string {
 }
 
 async function main(): Promise<void> {
+  // Ensure seeding is only executed in development/debug environments
+  if (process.env.NODE_ENV === 'production') {
+    console.log('Skipping database seed: Not in DEBUG/Development environment.');
+    return;
+  }
+
+  const seedDataPath = path.resolve(__dirname, '../seed.json');
+  const seedData = JSON.parse(fs.readFileSync(seedDataPath, 'utf8'));
+  const demoApiKey = seedData.apiKey.plaintext;
+
   const tenant = await prisma.tenant.upsert({
-    where: { slug: 'acme-support' },
-    update: { planCode: 'free' },
+    where: { slug: seedData.tenant.slug },
+    update: { planCode: seedData.tenant.planCode },
     create: {
-      id: '4a9ca27d-9e50-4ec8-b6e6-1d2a612b4135',
-      slug: 'acme-support',
-      name: 'Acme Support',
-      planCode: 'free'
+      id: seedData.tenant.id,
+      slug: seedData.tenant.slug,
+      name: seedData.tenant.name,
+      planCode: seedData.tenant.planCode
     }
   });
 
@@ -26,13 +37,15 @@ async function main(): Promise<void> {
     where: { keyHash: hashApiKey(demoApiKey) },
     update: { revokedAt: null, tenantId: tenant.id, keyPrefix: demoApiKey.slice(0, 8) },
     create: {
-      id: 'f6a4274e-8702-4015-8f2c-fc51dbf9c7c1',
+      id: seedData.apiKey.id,
       tenantId: tenant.id,
-      name: 'Local demo key',
+      name: seedData.apiKey.name,
       keyPrefix: demoApiKey.slice(0, 8),
       keyHash: hashApiKey(demoApiKey)
     }
   });
+
+  console.log('Database seeding complete using seed.json.');
 }
 
 main()

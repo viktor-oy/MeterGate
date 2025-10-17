@@ -1,0 +1,13 @@
+{
+  "tenant": {
+    "slug": "acme-support",
+    "name": "Acme Support",
+    "planCode": "free",
+    "id": "4a9ca27d-9e50-4ec8-b6e6-1d2a612b4135"
+  },
+  "apiKey": {
+    "id": "f6a4274e-8702-4015-8f2c-fc51dbf9c7c1",
+    "name": "Local demo key",
+    "plaintext": "mg_demo_local_plaintext_key"
+  }
+}

@@ -28,14 +28,12 @@ async function bootstrap(): Promise<void> {
   });
 
   const documentConfig = new DocumentBuilder()
-    .setTitle('MeterGate Control Plane API')
-    .setDescription('OpenAPI REST documentation for MeterGate Management and Infrastructure Automation.')
+    .setTitle('MeterGate API')
+    .setDescription('Provider-mode decision endpoint and service health for MeterGate.')
     .setVersion('0.1.0')
     .addApiKey({ type: 'apiKey', name: config.getApiKeyHeader(), in: 'header' }, 'api-key')
     .build();
   const document = SwaggerModule.createDocument(app, documentConfig);
-  // @nestjs/swagger is explicitly configured here for DevOps/IaC endpoints (/docs).
-  // The Admin UI dashboard endpoint is served via @nestjs/graphql at /graphql (see app.module.ts).
   SwaggerModule.setup('/docs', app, document);
   const httpAdapter = app.getHttpAdapter() as HttpAdapterWithGet;
   httpAdapter.get('/docs-json', (_request, response) => {

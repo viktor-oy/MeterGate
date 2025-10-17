@@ -1,30 +1,74 @@
-.PHONY: help test test-unit test-intg test-controlplane test-dataplane smoke-test
+MODE ?= proxy
+
+# Use mise for environment management if it's installed, otherwise fallback to system tools
+MISE_EXEC ?= $(shell command -v mise >/dev/null 2>&1 && echo "mise x -- " || echo "")
+
+ifeq ($(MODE),proxy)
+COMPOSE_ARGS := -f infra/docker-compose.infra.yml -f infra/docker-compose.common.yml -f infra/docker-compose.proxy.yml
+else ifeq ($(MODE),provider)
+COMPOSE_ARGS := -f infra/docker-compose.infra.yml -f infra/docker-compose.common.yml -f infra/docker-compose.provider.yml
+else
+$(error MODE must be proxy or provider)
+endif
+
+.PHONY: help test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy
 
 help:
-	@printf '%s\n' "MeterGate targets: test test-unit test-intg test-controlplane test-dataplane smoke-test"
+	@printf '%s\n' "MeterGate targets: test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy"
+infra-up: infra-deps-up
+	@echo "Starting app in $(MODE) mode..."
+	docker-compose $(COMPOSE_ARGS) up --build -d
 
-test: test-controlplane test-dataplane
+infra-down:
+	@echo "Stopping infrastructure..."
+	docker-compose $(COMPOSE_ARGS) down -v
 
-test-unit:
-	@echo "Running unit tests across all services..."
-	npm run test
-	cd src/dataplane && go test -v -short ./...
+infra-deps-up:
+	@echo "Starting infrastructure dependencies only..."
+	docker-compose $(COMPOSE_ARGS) up -d postgres redis
+	@echo "Waiting for databases to initialize..."
+	sleep 5
+	@echo "Applying database schema and seeding..."
+	DATABASE_URL=postgresql://metergate:metergate@localhost:5432/metergate?schema=public $(MISE_EXEC)npx prisma db push --accept-data-loss
+	DATABASE_URL=postgresql://metergate:metergate@localhost:5432/metergate?schema=public $(MISE_EXEC)npm run prisma:seed
 
-test-intg:
-	@echo "Running integration tests..."
-	npm run test:e2e
-	cd src/dataplane && go test -v -tags=integration ./...
+infra-deps-down:
+	@echo "Stopping infrastructure dependencies only..."
+	docker-compose $(COMPOSE_ARGS) rm -f -s -v postgres redis
 
-test-controlplane:
-	@echo "Running Control Plane tests..."
-	npm run test
-	npm run test:e2e
+db-migrate-dev:
+	@echo "Creating Prisma migration..."
+	DATABASE_URL=postgresql://metergate:metergate@localhost:5432/metergate?schema=public $(MISE_EXEC)npx prisma migrate dev
 
-test-dataplane:
-	@echo "Running Data Plane tests..."
-	cd src/dataplane && go test -v -race ./...
+db-migrate-deploy:
+	@echo "Deploying Prisma migrations..."
+	DATABASE_URL=postgresql://metergate:metergate@localhost:5432/metergate?schema=public $(MISE_EXEC)npx prisma migrate deploy
 
-smoke-test:
+test: smoke-test test-cp test-dp
+
+test-cp-unit:
+	@echo "Running Control Plane unit tests..."
+	$(MISE_EXEC)npm run test:unit
+
+test-cp-intg: infra-deps-up
+	@echo "Running Control Plane integration tests..."
+	$(MISE_EXEC)npm run test:integration
+
+test-cp: test-cp-unit test-cp-intg
+
+test-dp-unit:
+	@echo "Running Data Plane unit tests..."
+	cd src/dataplane && $(MISE_EXEC)go test -v -short ./...
+
+test-dp-intg: infra-deps-up
+	@echo "Running Data Plane integration tests..."
+	cd src/dataplane && $(MISE_EXEC)go test -v -tags=integration ./...
+
+test-dp: test-dp-unit test-dp-intg
+
+test-unit: test-cp-unit test-dp-unit
+test-intg: test-cp-intg test-dp-intg
+
+smoke-test: infra-deps-up
 	@echo "Running smoke tests..."
-	./scripts/smoke-proxy.sh
-	./scripts/smoke-provider.sh
+	./tests/smoke/smoke.sh

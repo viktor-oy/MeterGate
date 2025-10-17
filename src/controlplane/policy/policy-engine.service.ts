@@ -6,6 +6,8 @@ import { BlacklistService } from './blacklist.service';
 import type { PolicyDecision, PolicyRequest } from './policy.types';
 import { RateLimitService } from './rate-limit.service';
 import { OtelService } from '../observability/otel.service';
+import { RedisService } from '../redis/redis.service';
+import { MeterGateConfigService } from '../config/metergate-config.service';
 
 @Injectable()
 export class PolicyEngineService {
@@ -15,7 +17,9 @@ export class PolicyEngineService {
     private readonly keys: ApiKeyRepository,
     private readonly blacklist: BlacklistService,
     private readonly rateLimit: RateLimitService,
-    private readonly otel: OtelService
+    private readonly otel: OtelService,
+    private readonly redis: RedisService,
+    private readonly config: MeterGateConfigService
   ) {}
 
   async decide(request: PolicyRequest): Promise<PolicyDecision> {

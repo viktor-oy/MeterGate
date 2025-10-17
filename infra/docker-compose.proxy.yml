@@ -3,11 +3,3 @@ services:
     environment:
       METERGATE_MODE: proxy
 
-  sample-api:
-    environment:
-      METERGATE_MODE: proxy
-
-  sample-web:
-    environment:
-      VITE_METERGATE_MODE: proxy
-

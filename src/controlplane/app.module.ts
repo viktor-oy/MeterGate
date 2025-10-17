@@ -1,10 +1,11 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { ScheduleModule } from '@nestjs/schedule';
 import { L1CacheService } from './cache/l1-cache.service';
 import { MeterGateConfigService } from './config/metergate-config.service';
 import { HealthController } from './http/health.controller';
-import { ProviderController } from './http/provider.controller';
+import { HealthResolver } from './http/health.resolver';
 import { RequestIdMiddleware } from './http/request-id.middleware';
 import { ApiKeyHashService } from './keys/api-key-hash.service';
 import { OtelService } from './observability/otel.service';
@@ -17,9 +18,10 @@ import { RedisService } from './redis/redis.service';
 import { RouteMatcherService } from './routes/route-matcher.service';
 import { ApiKeyRepository } from './tenants/api-key.repository';
 import { PrismaService } from './tenants/prisma.service';
+import { CacheSyncService } from './sync/cache-sync.service';
 
 @Module({
-  controllers: [HealthController, ProviderController, ProxyController],
+  controllers: [HealthController, ProxyController],
   providers: [
     MeterGateConfigService,
     L1CacheService,
@@ -32,7 +34,9 @@ import { PrismaService } from './tenants/prisma.service';
     RateLimitService,
     PolicyEngineService,
     StructuredLoggerService,
-    OtelService
+    OtelService,
+    HealthResolver,
+    CacheSyncService
   ],
   imports: [
     GraphQLModule.forRoot<ApolloDriverConfig>({
@@ -41,6 +45,7 @@ import { PrismaService } from './tenants/prisma.service';
       playground: true,
       path: '/graphql',
     }),
+    ScheduleModule.forRoot()
   ]
 })
 export class AppModule implements NestModule {
@@ -48,4 +53,3 @@ export class AppModule implements NestModule {
     consumer.apply(RequestIdMiddleware).forRoutes('*');
   }
 }
-

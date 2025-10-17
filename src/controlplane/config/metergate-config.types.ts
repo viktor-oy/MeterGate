@@ -35,6 +35,7 @@ export type MeterGateConfig = {
     string,
     {
       displayName: string;
+      shardCount: number;
       groups: Record<
         string,
         {
@@ -53,4 +54,3 @@ export type PlanLimit = {
   limit: number;
   unit: RateUnit;
 };
-

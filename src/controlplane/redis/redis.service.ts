@@ -27,7 +27,7 @@ export type RateLimitResult = {
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
-  private readonly client: Redis;
+  public readonly client: Redis;
 
   constructor() {
     this.client = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {

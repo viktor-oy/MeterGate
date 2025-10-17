@@ -34,12 +34,14 @@ protectedRoutes:
 plans:
   free:
     displayName: Demo Free
+    shardCount: 1
     groups:
       graphql:
         limit: 6
         unit: minute
   starter:
     displayName: Demo Starter
+    shardCount: 3
     groups:
       graphql:
         limit: 20

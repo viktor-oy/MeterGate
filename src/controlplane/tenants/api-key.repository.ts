@@ -15,7 +15,7 @@ export class ApiKeyRepository {
   ) {}
 
   async findByHash(keyHash: string): Promise<ApiKeyRecord | undefined> {
-    const cacheKey = `apikey:${keyHash}`;
+    const cacheKey = `metergate:cache:apikey:${keyHash}`;
     const cached = this.l1.get(cacheKey) as ApiKeyRecord | undefined;
     if (cached) {
       return cached;

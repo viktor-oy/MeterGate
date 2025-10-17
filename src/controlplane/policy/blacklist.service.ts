@@ -17,7 +17,7 @@ export class BlacklistService {
       return true;
     }
 
-    const cacheKey = `blacklist:${keyHash}`;
+    const cacheKey = `metergate:cache:blacklist:${keyHash}`;
     const cached = this.l1.get(cacheKey) as boolean | undefined;
     if (cached !== undefined) {
       return cached;
