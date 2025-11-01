@@ -59,6 +59,8 @@ test-cp: test-cp-unit test-cp-intg
 test-dp-unit:
 	@echo "Running Data Plane unit tests..."
 	cd src/dataplane && $(MISE_EXEC)go test -v -short ./...
+	@echo "Running Escape Analysis (Zero Allocation Check)..."
+	cd src/dataplane && $(MISE_EXEC)make check-escapes
 
 test-dp-intg: infra-deps-up
 	@echo "Running Data Plane integration tests..."
