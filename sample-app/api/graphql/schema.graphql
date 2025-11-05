@@ -1,0 +1,22 @@
+type Ticket {
+  id: ID!
+  subject: String!
+  status: String!
+  comments: [Comment!]!
+}
+
+type Comment {
+  id: ID!
+  body: String!
+  createdAt: String!
+}
+
+type Query {
+  tickets: [Ticket!]! @field(resolver: "App\\GraphQL\\Queries\\TicketQuery@list")
+  ticket(id: ID!): Ticket @field(resolver: "App\\GraphQL\\Queries\\TicketQuery@find")
+}
+
+type Mutation {
+  addComment(ticketId: ID!, body: String!): Ticket @field(resolver: "App\\GraphQL\\Mutations\\TicketMutation@addComment")
+}
+
