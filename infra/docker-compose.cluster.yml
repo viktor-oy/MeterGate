@@ -1,0 +1,159 @@
+name: metergate-infra
+
+services:
+  postgres:
+    image: postgres:17.4-bookworm
+    environment:
+      POSTGRES_DB: metergate
+      POSTGRES_USER: metergate
+      POSTGRES_PASSWORD: metergate
+    ports:
+      - "5432:5432"
+    volumes:
+      - ../.data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U metergate -d metergate"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-1:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6371", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6371:6371"
+    volumes:
+      - ../.data/redis-1:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6371", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-2:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6372", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6372:6372"
+    volumes:
+      - ../.data/redis-2:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6372", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-3:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6373", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6373:6373"
+    volumes:
+      - ../.data/redis-3:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6373", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-4:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6374", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6374:6374"
+    volumes:
+      - ../.data/redis-4:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6374", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-5:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6375", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6375:6375"
+    volumes:
+      - ../.data/redis-5:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6375", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-6:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6376", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6376:6376"
+    volumes:
+      - ../.data/redis-6:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6376", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-7:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6377", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6377:6377"
+    volumes:
+      - ../.data/redis-7:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6377", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-8:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6378", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6378:6378"
+    volumes:
+      - ../.data/redis-8:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6378", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-node-9:
+    image: redis:7.4.2-bookworm
+    command: ["redis-server", "--port", "6379", "--cluster-enabled", "yes", "--cluster-config-file", "nodes.conf", "--cluster-node-timeout", "5000", "--appendonly", "yes", "--min-replicas-to-write", "1", "--min-replicas-max-lag", "5"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - ../.data/redis-9:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis-cluster-init:
+    image: redis:7.4.2-bookworm
+    depends_on:
+      redis-node-1:
+        condition: service_healthy
+      redis-node-2:
+        condition: service_healthy
+      redis-node-3:
+        condition: service_healthy
+      redis-node-4:
+        condition: service_healthy
+      redis-node-5:
+        condition: service_healthy
+      redis-node-6:
+        condition: service_healthy
+      redis-node-7:
+        condition: service_healthy
+      redis-node-8:
+        condition: service_healthy
+      redis-node-9:
+        condition: service_healthy
+    command: >
+      sh -c 'echo "yes" | redis-cli --cluster create redis-node-1:6371 redis-node-2:6372 redis-node-3:6373 redis-node-4:6374 redis-node-5:6375 redis-node-6:6376 redis-node-7:6377 redis-node-8:6378 redis-node-9:6379 --cluster-replicas 2'

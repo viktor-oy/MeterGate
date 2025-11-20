@@ -84,6 +84,16 @@ The system uses Zod schemas to validate `infra/metergate.yml` at boot time. If a
 
 To guarantee environment reproducibility, we use `mise` to lock Node.js and Go compiler versions in `.mise.toml`. The `Makefile` dynamically injects `mise x --` into all build/test commands. This is a principal-level safeguard: it ensures developers inherently use the correct runtimes if `mise` is installed, while gracefully degrading to global tooling if it is not, avoiding hard vendor lock-in.
 
+### 6. Two-Tier Quota Aggregation
+
+To avoid blocking the Go Data Plane hot-path on Redis roundtrips for global rate limit sums, we implemented a Two-Tier system:
+1. **Tier 1 (Fast-Path)**: The Data Plane evaluates limits purely against an extremely fast, zero-allocation local L1 cache (`sync.Map`), ensuring latency stays in the sub-millisecond range. It also fires non-blocking `INCR` commands via connection pools.
+2. **Tier 2 (Background Sync)**: An asynchronous background goroutine periodically (`100ms`) aggregates the global sum of all traffic across the salt buckets (`shard_0`..`shard_N`) using Redis `MGET`, and updates the L1 cache.
+
+### 7. Quorum Write Fencing
+
+The production topology utilizes a Native 3-Shard Redis Cluster (1M + 2R = 9 nodes). To eliminate the possibility of split-brain during a network partition (where the Data Plane might artificially reset rate limit quotas if a Master disconnects from its Replicas), we strictly enforce Quorum Write Fencing using `min-replicas-to-write: 1` and `min-replicas-max-lag: 5` on the Redis infrastructure layer.
+
 ## Local Development
 
 MeterGate uses `.mise.toml` to strictly lock development tooling versions. Ensure you have `mise` installed, then run `mise install` to provision Go 1.22+ and Node.js.

@@ -64,7 +64,7 @@ test-dp-unit:
 
 test-dp-intg: infra-deps-up
 	@echo "Running Data Plane integration tests..."
-	cd src/dataplane && $(MISE_EXEC)go test -v -tags=integration ./...
+	cd src/dataplane && $(MISE_EXEC)go test -v -tags=integration -run=Integration ./...
 
 test-dp: test-dp-unit test-dp-intg
 

@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
-import Redis from 'ioredis';
+import Redis, { Cluster } from 'ioredis';
 
 const fixedWindowLua = `
 local current = redis.call("INCR", KEYS[1])
@@ -27,13 +27,21 @@ export type RateLimitResult = {
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
-  public readonly client: Redis;
+  public readonly client: Redis | Cluster;
 
   constructor() {
-    this.client = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
-      maxRetriesPerRequest: 2,
-      lazyConnect: true
-    });
+    const urls = (process.env.REDIS_URL ?? 'redis://localhost:6379').split(',');
+    
+    if (urls.length > 1) {
+      this.client = new Redis.Cluster(urls, {
+        redisOptions: { maxRetriesPerRequest: 2 }
+      });
+    } else {
+      this.client = new Redis(urls[0] as string, {
+        maxRetriesPerRequest: 2,
+        lazyConnect: true
+      });
+    }
   }
 
   onModuleDestroy(): void {
