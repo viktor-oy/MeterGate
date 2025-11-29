@@ -1,0 +1,45 @@
+name: ci
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+jobs:
+  metergate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.11.1
+      - run: npm install --before=2025-11-21T00:00:00.000Z
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: docker compose -f docker-compose.common.yml -f docker-compose.proxy.yml build
+
+  sample-api:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.4
+          tools: composer:2.9.2
+      - working-directory: sample-app/api
+        run: composer install --no-interaction --prefer-dist
+      - working-directory: sample-app/api
+        run: composer test
+
+  sample-web:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.11.1
+      - working-directory: sample-app/web
+        run: npm install --before=2025-11-21T00:00:00.000Z
+      - working-directory: sample-app/web
+        run: npm run build
