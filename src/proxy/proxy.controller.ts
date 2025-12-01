@@ -16,7 +16,7 @@ export class ProxyController {
     private readonly otel: OtelService
   ) {}
 
-  @All('*')
+  @All('{*proxyPath}')
   async proxy(@Req() request: Request, @Res() response: Response): Promise<void> {
     const requestId = request.requestId ?? 'missing-request-id';
     if (metergateInternalPrefixes.some((prefix) => request.path.startsWith(prefix))) {
@@ -77,7 +77,10 @@ export class ProxyController {
   private forwardHeaders(request: Request, requestId: string): Headers {
     const headers = new Headers();
     for (const [key, value] of Object.entries(request.headers)) {
-      if (value === undefined || key.toLowerCase() === 'host') {
+      if (
+        value === undefined ||
+        ['connection', 'content-length', 'host', 'transfer-encoding'].includes(key.toLowerCase())
+      ) {
         continue;
       }
       headers.set(key, Array.isArray(value) ? value.join(',') : value);
@@ -93,4 +96,3 @@ export class ProxyController {
     return typeof request.body === 'string' ? request.body : JSON.stringify(request.body ?? {});
   }
 }
-
