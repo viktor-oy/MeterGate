@@ -3,9 +3,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 FROM base AS deps
-COPY package.json package.json
+COPY package.json package-lock.json ./
 COPY prisma prisma
-RUN npm install --include=dev --before=2025-11-21T00:00:00.000Z
+RUN npm ci --include=dev
 
 FROM deps AS build
 COPY tsconfig.json tsconfig.build.json nest-cli.json ./
@@ -13,7 +13,7 @@ COPY src src
 RUN npm run prisma:generate && npm run build
 
 FROM base AS runtime
-COPY package.json package.json
+COPY package.json package-lock.json ./
 COPY prisma prisma
 COPY --from=deps /app/node_modules node_modules
 COPY --from=build /app/dist dist

@@ -14,5 +14,5 @@
       ]
     }
   },
-  "postCreateCommand": "npm install --before=2025-11-21T00:00:00.000Z && cd sample-app/web && npm install --before=2025-11-21T00:00:00.000Z && cd ../api && composer install"
+  "postCreateCommand": "npm ci && cd sample-app/web && npm ci && cd ../api && composer install"
 }

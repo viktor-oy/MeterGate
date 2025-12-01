@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24.11.1
-      - run: npm install --before=2025-11-21T00:00:00.000Z
+      - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
@@ -40,6 +40,6 @@ jobs:
         with:
           node-version: 24.11.1
       - working-directory: sample-app/web
-        run: npm install --before=2025-11-21T00:00:00.000Z
+        run: npm ci
       - working-directory: sample-app/web
         run: npm run build
