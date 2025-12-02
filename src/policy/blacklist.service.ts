@@ -18,7 +18,7 @@ export class BlacklistService {
     }
 
     const cacheKey = `blacklist:${keyHash}`;
-    const cached = this.l1.get<boolean>(cacheKey);
+    const cached = this.l1.get(cacheKey) as boolean | undefined;
     if (cached !== undefined) {
       return cached;
     }
@@ -28,4 +28,3 @@ export class BlacklistService {
     return dynamic;
   }
 }
-

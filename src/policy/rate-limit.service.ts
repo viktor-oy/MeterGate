@@ -17,10 +17,9 @@ export class RateLimitService {
     }
 
     const ttlSeconds = this.config.ttlSeconds(planLimit.unit);
-    const windowId = Math.floor(Date.now() / (ttlSeconds * 1000));
+    const windowId = String(Math.floor(Date.now() / (ttlSeconds * 1000)));
     const key = `metergate:rate:${tenantId}:${route.id}:${planCode}:${windowId}`;
     const result = await this.redis.fixedWindow(key, planLimit.limit, ttlSeconds);
     return { ...result, limit: planLimit.limit };
   }
 }
-

@@ -13,7 +13,7 @@ const configSchema = z.object({
   }),
   proxy: z.object({
     enabled: z.boolean(),
-    upstreamUrl: z.string().url(),
+    upstreamUrl: z.url(),
     upstreamTimeoutMs: z.number().int().positive()
   }),
   cache: z.object({
@@ -99,4 +99,3 @@ export class MeterGateConfigService {
     return 3600;
   }
 }
-

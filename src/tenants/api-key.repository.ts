@@ -16,12 +16,12 @@ export class ApiKeyRepository {
 
   async findByHash(keyHash: string): Promise<ApiKeyRecord | undefined> {
     const cacheKey = `apikey:${keyHash}`;
-    const cached = this.l1.get<ApiKeyRecord>(cacheKey);
+    const cached = this.l1.get(cacheKey) as ApiKeyRecord | undefined;
     if (cached) {
       return cached;
     }
 
-    const l2 = await this.redis.getJson<ApiKeyRecord>(cacheKey);
+    const l2 = (await this.redis.getJson(cacheKey)) as ApiKeyRecord | undefined;
     if (l2) {
       this.l1.set(cacheKey, l2, this.config.get().cache.l1.apiKeyTtlSeconds);
       return l2;
@@ -48,4 +48,3 @@ export class ApiKeyRepository {
     return value;
   }
 }
-

@@ -48,7 +48,9 @@ export class ProxyController {
     await this.otel.span('metergate.proxy_forward', requestId, { path: request.path }, async () => {
       const upstream = new URL(request.originalUrl, this.config.get().proxy.upstreamUrl);
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.config.get().proxy.upstreamTimeoutMs);
+      const timer = setTimeout(() => {
+        controller.abort();
+      }, this.config.get().proxy.upstreamTimeoutMs);
 
       try {
         const upstreamResponse = await fetch(upstream, {

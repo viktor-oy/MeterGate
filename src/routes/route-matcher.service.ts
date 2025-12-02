@@ -13,7 +13,7 @@ export class RouteMatcherService {
   match(method: string, path: string): MatchedRoute | undefined {
     const normalizedMethod = method.toUpperCase();
     const cacheKey = `route:${normalizedMethod}:${path}`;
-    const cached = this.l1.get<MatchedRoute | null>(cacheKey);
+    const cached = this.l1.get(cacheKey) as MatchedRoute | null | undefined;
     if (cached !== undefined) {
       return cached ?? undefined;
     }
@@ -30,4 +30,3 @@ export class RouteMatcherService {
     return result ?? undefined;
   }
 }
-

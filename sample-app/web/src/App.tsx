@@ -22,12 +22,13 @@ type Counters = {
   errors: number;
 };
 
-const mode = (import.meta.env.VITE_METERGATE_MODE ?? 'proxy') as Mode;
+const env = import.meta.env as Record<string, string | undefined>;
+const mode: Mode = env.VITE_METERGATE_MODE === 'provider' ? 'provider' : 'proxy';
 const endpoint =
   mode === 'proxy'
-    ? import.meta.env.VITE_PROXY_GRAPHQL_URL
-    : import.meta.env.VITE_PROVIDER_GRAPHQL_URL;
-const apiKey = import.meta.env.VITE_DEMO_API_KEY ?? 'mg_demo_local_plaintext_key';
+    ? (env.VITE_PROXY_GRAPHQL_URL ?? 'http://localhost:3000/graphql')
+    : (env.VITE_PROVIDER_GRAPHQL_URL ?? 'http://localhost:8000/graphql');
+const apiKey = env.VITE_DEMO_API_KEY ?? 'mg_demo_local_plaintext_key';
 
 async function graphql<T>(query: string, variables: Record<string, unknown> = {}): Promise<{ data?: T; response: Response; body: unknown }> {
   const response = await fetch(endpoint, {
@@ -52,13 +53,17 @@ export function App() {
   const [lastRateLimit, setLastRateLimit] = useState('No requests yet');
   const [busy, setBusy] = useState(false);
 
-  const selected = useMemo(() => tickets.find((ticket) => ticket.id === selectedId) ?? tickets[0], [tickets, selectedId]);
+  const selected = useMemo<SupportTicket | undefined>(
+    () => tickets.find((ticket) => ticket.id === selectedId) ?? tickets.at(0),
+    [tickets, selectedId]
+  );
 
   async function loadTickets() {
     const result = await graphql<{ tickets: SupportTicket[] }>('query Tickets { tickets { id subject status comments { id body createdAt } } }');
     if (result.data?.tickets) {
-      setTickets(result.data.tickets);
-      setSelectedId((current) => current || result.data!.tickets[0]?.id || '');
+      const loadedTickets = result.data.tickets;
+      setTickets(loadedTickets);
+      setSelectedId((current) => current || loadedTickets.at(0)?.id || '');
     }
     updateRateLimit(result.response, result.body);
   }
@@ -131,7 +136,13 @@ export function App() {
         </div>
         <nav className="ticket-list" aria-label="Tickets">
           {tickets.map((ticket) => (
-            <button key={ticket.id} className={ticket.id === selected?.id ? 'ticket-row active' : 'ticket-row'} onClick={() => setSelectedId(ticket.id)}>
+            <button
+              key={ticket.id}
+              className={ticket.id === selected?.id ? 'ticket-row active' : 'ticket-row'}
+              onClick={() => {
+                setSelectedId(ticket.id);
+              }}
+            >
               <Ticket aria-hidden="true" />
               <span>
                 <strong>{ticket.id}</strong>
@@ -158,9 +169,23 @@ export function App() {
         <section className="request-panel">
           <label>
             <span>Fake requests</span>
-            <input min={1} max={50} type="number" value={fakeCount} onChange={(event) => setFakeCount(Number(event.target.value))} />
+            <input
+              min={1}
+              max={50}
+              type="number"
+              value={fakeCount}
+              onChange={(event) => {
+                setFakeCount(Number(event.target.value));
+              }}
+            />
           </label>
-          <button className="primary-button" onClick={() => void generateFakeRequests()} disabled={busy}>
+          <button
+            className="primary-button"
+            onClick={() => {
+              void generateFakeRequests();
+            }}
+            disabled={busy}
+          >
             <Play aria-hidden="true" />
             {busy ? 'Running' : 'Generate'}
           </button>
@@ -183,8 +208,19 @@ export function App() {
             ))}
           </div>
           <div className="composer">
-            <textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Add a support note" />
-            <button onClick={() => void addComment()} disabled={!selected || comment.trim() === ''}>
+            <textarea
+              value={comment}
+              onChange={(event) => {
+                setComment(event.target.value);
+              }}
+              placeholder="Add a support note"
+            />
+            <button
+              onClick={() => {
+                void addComment();
+              }}
+              disabled={!selected || comment.trim() === ''}
+            >
               Add comment
             </button>
           </div>
@@ -193,4 +229,3 @@ export function App() {
     </main>
   );
 }
-

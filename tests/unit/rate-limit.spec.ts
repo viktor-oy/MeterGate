@@ -18,7 +18,7 @@ describe('RateLimitService', () => {
     });
 
     expect(result.limit).toBe(6);
-    expect(redis.fixedWindow.mock.calls[0][0]).toContain('metergate:rate:tenant-1:graphql:free');
+    const [counterKey] = redis.fixedWindow.mock.calls[0] as unknown as [string, number, number];
+    expect(counterKey).toContain('metergate:rate:tenant-1:graphql:free');
   });
 });
-

@@ -36,7 +36,7 @@ export class RedisService implements OnModuleDestroy {
     });
   }
 
-  async onModuleDestroy(): Promise<void> {
+  onModuleDestroy(): void {
     this.client.disconnect();
   }
 
@@ -60,13 +60,12 @@ export class RedisService implements OnModuleDestroy {
     return (await this.client.sismember('metergate:blacklist:api-key-hashes', keyHash)) === 1;
   }
 
-  async getJson<T>(key: string): Promise<T | undefined> {
+  async getJson(key: string): Promise<unknown> {
     const value = await this.client.get(key);
-    return value ? (JSON.parse(value) as T) : undefined;
+    return value ? (JSON.parse(value) as unknown) : undefined;
   }
 
-  async setJson<T>(key: string, value: T, ttlSeconds: number): Promise<void> {
+  async setJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
     await this.client.set(key, JSON.stringify(value), 'EX', ttlSeconds);
   }
 }
-
