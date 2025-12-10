@@ -24,3 +24,20 @@ services:
     ports:
       - "3000-3010:3000"
       - "9464:9464"
+
+  dataplane:
+    build:
+      context: ..
+      dockerfile: src/dataplane/Dockerfile
+    environment:
+      - REDIS_HOST=redis
+      - METERGATE_CONFIG_PATH=/app/config/metergate.yml
+      - DISABLE_ZERO_ALLOC=false
+    volumes:
+      - ../config:/app/config:ro
+    ports:
+      - "8080:8080" # Proxy Port
+      - "6060:6060" # Internal Metrics & Pprof Port
+    depends_on:
+      redis:
+        condition: service_healthy

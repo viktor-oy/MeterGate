@@ -36,13 +36,10 @@ func TestRateLimiter_Integration_Accumulate(t *testing.T) {
 	defer cancel()
 
 	// 1. Start accumulator with known tenants and routes
-	tenants := map[string]struct{}{
-		"tenant-int": {},
-	}
-	routes := []string{"route-int"}
+	rl.Track("tenant-int", "route-int")
 	shardCount := 3
 
-	rl.StartBackgroundAggregator(ctx, tenants, routes, shardCount)
+	rl.StartBackgroundAggregator(ctx, shardCount)
 
 	// 2. Simulate raw traffic into the Redis salts (shard_0, shard_1, shard_2)
 	now := time.Now().Unix()

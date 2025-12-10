@@ -6,3 +6,5 @@ coverage
 tests/
 DUMMIES-AI-AG
 *.md
+pkg/
+.vscode/

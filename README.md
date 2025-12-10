@@ -94,6 +94,15 @@ To avoid blocking the Go Data Plane hot-path on Redis roundtrips for global rate
 
 The production topology utilizes a Native 3-Shard Redis Cluster (1M + 2R = 9 nodes). To eliminate the possibility of split-brain during a network partition (where the Data Plane might artificially reset rate limit quotas if a Master disconnects from its Replicas), we strictly enforce Quorum Write Fencing using `min-replicas-to-write: 1` and `min-replicas-max-lag: 5` on the Redis infrastructure layer.
 
+### 8. Crash-Only / Fail-Fast Data Plane Boot
+The Go Data Plane follows a strict Fail-Fast philosophy. On startup, it actively attempts to resolve the Redis cluster topology. If the cluster is unreachable or misconfigured, the process panics and exits immediately. This allows Docker Compose or Kubernetes Liveness Probes to cleanly isolate or restart the nodes without silently dropping traffic or returning ambiguous 5xx errors.
+
+### 9. Organic Chaos Engineering (GC Tuning)
+To mathematically prove the value of our Zero-Allocation hot path, the Data Plane includes a chaos engineering flag: `DISABLE_ZERO_ALLOC=true`. Rather than synthetically inflating memory with fake byte arrays, this flag organically strips away `sync.Pool` buffer pooling from the underlying `httputil.ReverseProxy`. This forces the Go standard library to naturally allocate and garbage-collect `io.Copy` buffers on the heap for every single proxy request, authentically simulating the performance degradation experienced by legacy proxy architectures.
+
+### 10. Binary Blackbox Integration Testing
+Integration tests in the Go Data Plane do not rely on mock HTTP handlers. We strictly utilize a Binary Blackbox approach: the `go test` suite actively compiles the Data Plane to an executable binary, boots a mock HTTP upstream, seeds a live Redis container, and runs the binary via `os/exec`. This guarantees 100% production parity for boundary tests, allowing us to simultaneously verify both Provider Mode (`POST /v1/check`) and Proxy Mode (`/*`) under identical constraints.
+
 ## Local Development
 
 MeterGate uses `.mise.toml` to strictly lock development tooling versions. Ensure you have `mise` installed, then run `mise install` to provision Go 1.22+ and Node.js.
@@ -101,26 +110,14 @@ MeterGate uses `.mise.toml` to strictly lock development tooling versions. Ensur
 ### Starting the Stack
 
 ```bash
-# Boot PostgreSQL, Redis, and the Control Plane
-docker compose -f infra/docker-compose.common.yml up -d
-
-# Run database migrations
-npx prisma migrate deploy
-
-# Start the Control Plane in development mode
-npm run start:dev
+# Boot the entire infrastructure stack (Databases, Control Plane, Data Plane)
+make infra-up
 ```
 
 ### Running Tests
 
 ```bash
-# Unit tests (isolated, no infrastructure required)
-npm run test
-
-# E2E tests (requires PostgreSQL and Redis)
-npm run test:e2e
-
-# All tests via Makefile
+# Execute unit, integration, and blackbox smoke tests across both planes
 make test
 ```
 

@@ -17,12 +17,22 @@ type RateLimiter struct {
 	// sumCache holds the async aggregated SUM of all Redis salt shards.
 	// Key: "tenantID:routeID", Value: total int64
 	sumCache sync.Map
+
+	// activeTenants and activeRoutes track known traffic
+	activeTenants sync.Map
+	activeRoutes  sync.Map
 }
 
 func NewRateLimiter(client redis.UniversalClient) *RateLimiter {
 	return &RateLimiter{
 		client: client,
 	}
+}
+
+// Track dynamically tracks tenants and routes for the aggregator.
+func (rl *RateLimiter) Track(tenantID, routeID string) {
+	rl.activeTenants.Store(tenantID, struct{}{})
+	rl.activeRoutes.Store(routeID, struct{}{})
 }
 
 // GetRateLimitKey dynamically generates a salted Redis key for high-velocity Enterprise traffic.
@@ -73,7 +83,7 @@ func (rl *RateLimiter) CheckAndRecord(ctx context.Context, tenantID, routeID str
 
 // StartBackgroundAggregator spins up the async worker that calculates SUM(shard_0..shard_9)
 // and updates the local L1 cache every 100ms.
-func (rl *RateLimiter) StartBackgroundAggregator(ctx context.Context, tenants map[string]struct{}, routes []string, shardCount int) {
+func (rl *RateLimiter) StartBackgroundAggregator(ctx context.Context, shardCount int) {
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -85,11 +95,11 @@ func (rl *RateLimiter) StartBackgroundAggregator(ctx context.Context, tenants ma
 			case <-ticker.C:
 				window := time.Now().Unix() / 60
 				
-				// In a real production system, the list of active tenants/routes 
-				// would be tracked dynamically in a concurrent map.
-				// For this aggregation, we iterate known routes and fetch their sharded sums.
-				for tenant := range tenants {
-					for _, route := range routes {
+				// Iterate tracked tenants/routes
+				rl.activeTenants.Range(func(tKey, _ interface{}) bool {
+					tenant := tKey.(string)
+					rl.activeRoutes.Range(func(rKey, _ interface{}) bool {
+						route := rKey.(string)
 						var sum int64
 						
 						// If shardCount is 1, it's just a standard INCR key
@@ -119,8 +129,10 @@ func (rl *RateLimiter) StartBackgroundAggregator(ctx context.Context, tenants ma
 						// Update L1
 						cacheKey := tenant + ":" + route
 						rl.sumCache.Store(cacheKey, int(sum))
-					}
-				}
+						return true
+					})
+					return true
+				})
 			}
 		}
 	}()

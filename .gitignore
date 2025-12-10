@@ -14,3 +14,8 @@ tmp/
 .vite/
 sample-app/web/dist/
 /.data
+pkg/
+.vscode/
+bin/
+go.work
+go.work.sum
