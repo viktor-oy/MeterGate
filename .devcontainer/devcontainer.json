@@ -1,0 +1,18 @@
+{
+  "name": "MeterGate",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceFolder": "/workspaces/metergate",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "bmewburn.vscode-intelephense-client",
+        "Prisma.prisma"
+      ]
+    }
+  },
+  "postCreateCommand": "npm install --before=2025-11-21T00:00:00.000Z && cd sample-app/web && npm install --before=2025-11-21T00:00:00.000Z && cd ../api && composer install"
+}
