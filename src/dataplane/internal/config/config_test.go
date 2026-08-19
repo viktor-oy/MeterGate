@@ -61,3 +61,42 @@ func TestInitRedisClient_FailFast(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "REDIS_HOST environment variable is required")
 }
+
+func TestLoadConfig_MissingUpstreamUrl(t *testing.T) {
+	tempDir := t.TempDir()
+	yamlPath := filepath.Join(tempDir, "metergate-missing.yml")
+
+	yamlContent := `
+server:
+  port: 8080
+proxy:
+  enabled: true
+  upstreamUrl: ""
+`
+	err := os.WriteFile(yamlPath, []byte(yamlContent), 0644)
+	assert.NoError(t, err)
+
+	_, err = config.LoadConfig(yamlPath)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "upstreamUrl is required")
+}
+
+func TestLoadConfig_AllDisabled(t *testing.T) {
+	tempDir := t.TempDir()
+	yamlPath := filepath.Join(tempDir, "metergate-alldisabled.yml")
+
+	yamlContent := `
+server:
+  port: 8080
+proxy:
+  enabled: false
+provider:
+  enabled: false
+`
+	err := os.WriteFile(yamlPath, []byte(yamlContent), 0644)
+	assert.NoError(t, err)
+
+	_, err = config.LoadConfig(yamlPath)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "at least one of proxy or provider mode must be enabled")
+}

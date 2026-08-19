@@ -72,6 +72,9 @@ proxy:
   enabled: true
   upstreamUrl: "` + upstream.URL + `"
   upstreamTimeoutMs: 5000
+provider:
+  enabled: true
+  port: 8090
 protectedRoutes:
   - id: "route_post"
     method: "POST"
@@ -131,7 +134,7 @@ plans:
 
 		if mode == "Provider" {
 			reqBody := `{"apiKey": "` + apiKey + `", "method": "POST", "path": "/post"}`
-			resp, err = http.Post("http://localhost:8089/v1/check", "application/json", bytes.NewBufferString(reqBody))
+			resp, err = http.Post("http://localhost:8090/v1/check", "application/json", bytes.NewBufferString(reqBody))
 		} else { // Proxy
 			req, _ := http.NewRequest("POST", "http://localhost:8089/post", nil)
 			if apiKey != "" {

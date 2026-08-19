@@ -55,7 +55,5 @@ func NewMeterGateProxy(targetURL *url.URL, disableZeroAlloc bool) *MeterGateProx
 
 // ServeHTTP implements http.Handler for the proxy.
 func (p *MeterGateProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-
 	p.ReverseProxy.ServeHTTP(w, r)
 }

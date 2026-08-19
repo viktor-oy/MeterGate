@@ -48,24 +48,61 @@ func main() {
 	rateLimiter := policy.NewRateLimiter(redisClient)
 	engine := policy.NewCoreEngine(cfg, l1Cache, rateLimiter, redisClient)
 
-	// Parse upstream URL
-	upstreamURL, err := url.Parse(cfg.Proxy.UpstreamUrl)
-	if err != nil {
-		log.Fatalf("Failed to parse upstream URL: %v", err)
+	// Track servers for graceful shutdown
+	var servers []*http.Server
+
+	if cfg.Provider.Enabled {
+		providerPort := cfg.Provider.Port
+		if envPort := os.Getenv("METERGATE_PROVIDER_PORT"); envPort != "" {
+			if p, err := strconv.Atoi(envPort); err == nil {
+				providerPort = p
+			}
+		}
+		if providerPort == 0 {
+			providerPort = 8081 // default provider port
+		}
+		providerHandler := proxy.NewProviderHandler(engine)
+		srv := &http.Server{
+			Addr:    ":" + strconv.Itoa(providerPort),
+			Handler: providerHandler,
+		}
+		servers = append(servers, srv)
+		go func() {
+			log.Printf("Starting MeterGate Data Plane (Provider Mode) on :%d", providerPort)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Provider Server failed: %v", err)
+			}
+		}()
 	}
 
-	// Initialize Proxy and Handler
-	reverseProxy := proxy.NewMeterGateProxy(upstreamURL, disableZeroAlloc)
-	handler := proxy.NewHandler(engine, reverseProxy)
+	if cfg.Proxy.Enabled {
+		upstreamURL, err := url.Parse(cfg.Proxy.UpstreamUrl)
+		if err != nil {
+			log.Fatalf("Failed to parse upstream URL: %v", err)
+		}
+		reverseProxy := proxy.NewMeterGateProxy(upstreamURL, disableZeroAlloc)
+		proxyHandler := proxy.NewProxyHandler(engine, reverseProxy)
 
-	// Create main server
-	serverPort := cfg.Server.Port
-	if serverPort == 0 {
-		serverPort = 8080
-	}
-	srv := &http.Server{
-		Addr:    ":" + strconv.Itoa(serverPort),
-		Handler: handler,
+		serverPort := cfg.Server.Port
+		if envPort := os.Getenv("METERGATE_PROXY_PORT"); envPort != "" {
+			if p, err := strconv.Atoi(envPort); err == nil {
+				serverPort = p
+			}
+		}
+		if serverPort == 0 {
+			serverPort = 8080 // default proxy port
+		}
+		srv := &http.Server{
+			Addr:    ":" + strconv.Itoa(serverPort),
+			Handler: proxyHandler,
+		}
+		servers = append(servers, srv)
+		go func() {
+			log.Printf("Starting MeterGate Data Plane (Proxy Mode) on :%d", serverPort)
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Proxy Server failed: %v", err)
+			}
+		}()
 	}
 
 	// Setup graceful shutdown context
@@ -92,14 +129,6 @@ func main() {
 		}
 	}()
 
-	// Start primary server
-	go func() {
-		log.Printf("Starting MeterGate Data Plane proxy on :%d", serverPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
-		}
-	}()
-
 	// Wait for termination signal
 	<-ctx.Done()
 	log.Println("Shutdown signal received, draining traffic...")
@@ -107,8 +136,10 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+	for _, srv := range servers {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("Server forced to shutdown: %v", err)
+		}
 	}
-	log.Println("Server gracefully stopped.")
+	log.Println("All servers gracefully stopped.")
 }
