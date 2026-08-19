@@ -90,6 +90,22 @@ To avoid blocking the Go Data Plane hot-path on Redis roundtrips for global rate
 1. **Tier 1 (Fast-Path)**: The Data Plane evaluates limits purely against an extremely fast, zero-allocation local L1 cache (`sync.Map`), ensuring latency stays in the sub-millisecond range. It also fires non-blocking `INCR` commands via connection pools.
 2. **Tier 2 (Background Sync)**: An asynchronous background goroutine periodically (`100ms`) aggregates the global sum of all traffic across the salt buckets (`shard_0`..`shard_N`) using Redis `MGET`, and updates the L1 cache.
 
+### Security Architecture: Proxy vs Provider Mode Isolation
+
+The Data Plane operates in two primary modes which can be independently toggled to radically reduce the network attack surface based on your deployment architecture. This prevents misconfigured internal firewalls from exposing unintended functionality (e.g. preventing internal verification nodes from accidentally acting as reverse proxies to sensitive upstream systems, and vice versa).
+
+```yaml
+proxy:
+  enabled: true       # When disabled, all proxy traffic returns 403 Forbidden
+  upstreamUrl: "http://internal-service"
+provider:
+  enabled: false      # When disabled, Provider mode doesn't even bind to a port
+  port: 8081          # Provider mode runs on a dedicated port to prevent routing conflicts
+```
+*Note: A Fail-Fast assertion guarantees that at least one of these modes must be enabled to boot.*
+
+## Data Plane Design Principles
+
 ### 7. Quorum Write Fencing
 
 The production topology utilizes a Native 3-Shard Redis Cluster (1M + 2R = 9 nodes). To eliminate the possibility of split-brain during a network partition (where the Data Plane might artificially reset rate limit quotas if a Master disconnects from its Replicas), we strictly enforce Quorum Write Fencing using `min-replicas-to-write: 1` and `min-replicas-max-lag: 5` on the Redis infrastructure layer.
@@ -110,8 +126,19 @@ MeterGate uses `.mise.toml` to strictly lock development tooling versions. Ensur
 ### Starting the Stack
 
 ```bash
-# Boot the entire infrastructure stack (Databases, Control Plane, Data Plane)
+# Boot the entire infrastructure stack in Docker (Databases, Control Plane, Data Plane)
 make infra-up
+
+# Force a rebuild of the Docker images before booting (if dependencies changed)
+make infra-up BUILD=1
+
+# Native Development Workflow (Fastest iteration speed)
+# Boots only Redis & Postgres in Docker, and runs the Go and NestJS services natively
+make dev
+
+# If you have zombie processes holding ports 3000, 8080, or 8081, you can forcefully kill them:
+make dev OVERRIDE=1
+# Alternatively: ./scripts/dev.sh --override-already-running
 ```
 
 ### Running Tests
@@ -124,5 +151,14 @@ make test
 ### API Documentation
 
 - **Swagger UI:** [http://localhost:3000/docs](http://localhost:3000/docs)
+  *(Note: You can use the Swagger UI to interactively test the system by dynamically provisioning new Tenants and API Keys).*
 - **OpenAPI JSON:** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
 - **GraphQL Playground:** [http://localhost:3000/graphql](http://localhost:3000/graphql)
+- **Data Plane (Provider Mode):**
+  The Data Plane intentionally omits a Swagger UI to preserve architectural purity and avoid false network latency metrics during testing. You can test it directly via cURL:
+  ```bash
+  curl -X POST http://localhost:8081/v1/check \
+    -H "Authorization: Bearer <your-api-key>" \
+    -H "Content-Type: application/json" \
+    -d '{"routeId": "api.chat.completions"}'
+  ```

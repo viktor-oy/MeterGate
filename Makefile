@@ -11,13 +11,17 @@ else
 $(error MODE must be proxy or provider)
 endif
 
-.PHONY: help test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy
+.PHONY: help test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy dev
 
 help:
 	@printf '%s\n' "MeterGate targets: test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy"
 infra-up: infra-deps-up
 	@echo "Starting app in $(MODE) mode..."
-	docker-compose $(COMPOSE_ARGS) up --build -d
+	docker-compose $(COMPOSE_ARGS) up $(if $(BUILD),--build,) -d
+
+dev:
+	@chmod +x scripts/dev.sh
+	./scripts/dev.sh $(if $(OVERRIDE),--override-already-running,)
 
 infra-down:
 	@echo "Stopping infrastructure..."

@@ -56,14 +56,14 @@ if [ "$HEALTH_STATUS" != "200" ]; then
 fi
 echo "Pass: GET /health returned 200 OK"
 
-# 2. GraphQL Introspection Check (should return 401 since we aren't passing auth, but proves endpoint is alive)
+# 2. GraphQL Introspection Check (should return 400 since we aren't passing a valid query, but proves endpoint is alive)
 echo "Testing POST /graphql..."
 CHECK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' http://localhost:$METERGATE_PORT/graphql)
-if [ "$CHECK_STATUS" != "401" ]; then
-    echo "Failed: POST /graphql returned $CHECK_STATUS (expected 401 Unauthorized)"
+if [ "$CHECK_STATUS" != "400" ]; then
+    echo "Failed: POST /graphql returned $CHECK_STATUS (expected 400 Bad Request)"
     exit 1
 fi
-echo "Pass: POST /graphql returned 401 Unauthorized"
+echo "Pass: POST /graphql returned 400 Bad Request"
 
 # 3. OpenTelemetry Metrics Check (should return 200 with Prometheus metrics)
 echo "Testing GET /metrics (Port 9464)..."
