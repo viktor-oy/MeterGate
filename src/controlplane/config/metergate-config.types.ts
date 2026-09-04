@@ -6,7 +6,6 @@ export type MeterGateConfig = {
     apiKeyHeader: string;
   };
   proxy: {
-    enabled: boolean;
     upstreamUrl: string;
     upstreamTimeoutMs: number;
   };

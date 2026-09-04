@@ -3,7 +3,6 @@ server:
   apiKeyHeader: x-api-key
 
 proxy:
-  enabled: true
   upstreamUrl: http://sample-api:8000
   upstreamTimeoutMs: 2500
 

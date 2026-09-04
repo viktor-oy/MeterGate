@@ -30,8 +30,6 @@ graph TB
         REDIS["Redis<br/>(L2 Cache + Rate Limits + Blacklist)"]
 
         WEB -- "Proxy Mode" --> HANDLER
-        WEB -- "Provider Mode" --> API
-        API -- "Provider Mode: POST /v1/check" --> HANDLER
         HANDLER --> POLICY
         POLICY --> L1
         POLICY --> RL
@@ -90,19 +88,7 @@ To avoid blocking the Go Data Plane hot-path on Redis roundtrips for global rate
 1. **Tier 1 (Fast-Path)**: The Data Plane evaluates limits purely against an extremely fast, zero-allocation local L1 cache (`sync.Map`), ensuring latency stays in the sub-millisecond range. It also fires non-blocking `INCR` commands via connection pools.
 2. **Tier 2 (Background Sync)**: An asynchronous background goroutine periodically (`100ms`) aggregates the global sum of all traffic across the salt buckets (`shard_0`..`shard_N`) using Redis `MGET`, and updates the L1 cache.
 
-### Security Architecture: Proxy vs Provider Mode Isolation
 
-The Data Plane operates in two primary modes which can be independently toggled to radically reduce the network attack surface based on your deployment architecture. This prevents misconfigured internal firewalls from exposing unintended functionality (e.g. preventing internal verification nodes from accidentally acting as reverse proxies to sensitive upstream systems, and vice versa).
-
-```yaml
-proxy:
-  enabled: true       # When disabled, all proxy traffic returns 403 Forbidden
-  upstreamUrl: "http://internal-service"
-provider:
-  enabled: false      # When disabled, Provider mode doesn't even bind to a port
-  port: 8081          # Provider mode runs on a dedicated port to prevent routing conflicts
-```
-*Note: A Fail-Fast assertion guarantees that at least one of these modes must be enabled to boot.*
 
 ## Data Plane Design Principles
 
@@ -116,8 +102,8 @@ The Go Data Plane follows a strict Fail-Fast philosophy. On startup, it actively
 ### 9. Organic Chaos Engineering (GC Tuning)
 To mathematically prove the value of our Zero-Allocation hot path, the Data Plane includes a chaos engineering flag: `DISABLE_ZERO_ALLOC=true`. Rather than synthetically inflating memory with fake byte arrays, this flag organically strips away `sync.Pool` buffer pooling from the underlying `httputil.ReverseProxy`. This forces the Go standard library to naturally allocate and garbage-collect `io.Copy` buffers on the heap for every single proxy request, authentically simulating the performance degradation experienced by legacy proxy architectures.
 
-### 10. Binary Blackbox Integration Testing
-Integration tests in the Go Data Plane do not rely on mock HTTP handlers. We strictly utilize a Binary Blackbox approach: the `go test` suite actively compiles the Data Plane to an executable binary, boots a mock HTTP upstream, seeds a live Redis container, and runs the binary via `os/exec`. This guarantees 100% production parity for boundary tests, allowing us to simultaneously verify both Provider Mode (`POST /v1/check`) and Proxy Mode (`/*`) under identical constraints.
+### 9. Binary Blackbox Integration Testing
+Integration tests in the Go Data Plane do not rely on mock HTTP handlers. We strictly utilize a Binary Blackbox approach: the `go test` suite actively compiles the Data Plane to an executable binary, boots a mock HTTP upstream, seeds a live Redis container, and runs the binary via `os/exec`. This guarantees 100% production parity for boundary tests, allowing us to verify the Proxy Mode (`/*`) under identical constraints.
 
 ## Local Development
 
@@ -136,9 +122,8 @@ make infra-up BUILD=1
 # Boots only Redis & Postgres in Docker, and runs the Go and NestJS services natively
 make dev
 
-# If you have zombie processes holding ports 3000, 8080, or 8081, you can forcefully kill them:
+# If you have zombie processes holding ports 3000 or 8080, you can forcefully kill them:
 make dev OVERRIDE=1
-# Alternatively: ./scripts/dev.sh --override-already-running
 ```
 
 ### Running Tests
@@ -154,11 +139,4 @@ make test
   *(Note: You can use the Swagger UI to interactively test the system by dynamically provisioning new Tenants and API Keys).*
 - **OpenAPI JSON:** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
 - **GraphQL Playground:** [http://localhost:3000/graphql](http://localhost:3000/graphql)
-- **Data Plane (Provider Mode):**
-  The Data Plane intentionally omits a Swagger UI to preserve architectural purity and avoid false network latency metrics during testing. You can test it directly via cURL:
-  ```bash
-  curl -X POST http://localhost:8081/v1/check \
-    -H "Authorization: Bearer <your-api-key>" \
-    -H "Content-Type: application/json" \
-    -d '{"routeId": "api.chat.completions"}'
-  ```
+

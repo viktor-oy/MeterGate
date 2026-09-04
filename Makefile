@@ -1,22 +1,14 @@
-MODE ?= proxy
-
 # Use mise for environment management if it's installed, otherwise fallback to system tools
 MISE_EXEC ?= $(shell command -v mise >/dev/null 2>&1 && echo "mise x -- " || echo "")
 
-ifeq ($(MODE),proxy)
-COMPOSE_ARGS := -f infra/docker-compose.infra.yml -f infra/docker-compose.common.yml -f infra/docker-compose.proxy.yml
-else ifeq ($(MODE),provider)
-COMPOSE_ARGS := -f infra/docker-compose.infra.yml -f infra/docker-compose.common.yml -f infra/docker-compose.provider.yml
-else
-$(error MODE must be proxy or provider)
-endif
+COMPOSE_ARGS := -f infra/docker-compose.infra.yml -f infra/docker-compose.common.yml
 
 .PHONY: help test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy dev
 
 help:
 	@printf '%s\n' "MeterGate targets: test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy"
 infra-up: infra-deps-up
-	@echo "Starting app in $(MODE) mode..."
+	@echo "Starting app..."
 	docker-compose $(COMPOSE_ARGS) up $(if $(BUILD),--build,) -d
 
 dev:

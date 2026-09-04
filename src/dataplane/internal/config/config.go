@@ -13,7 +13,7 @@ import (
 type MeterGateConfig struct {
 	Server          ServerConfig    `yaml:"server"`
 	Proxy           ProxyConfig     `yaml:"proxy"`
-	Provider        ProviderConfig  `yaml:"provider"`
+
 	Cache           CacheConfig     `yaml:"cache"`
 	ProtectedRoutes []RouteConfig   `yaml:"protectedRoutes"`
 	Plans           map[string]Plan `yaml:"plans"`
@@ -26,15 +26,10 @@ type ServerConfig struct {
 }
 
 type ProxyConfig struct {
-	Enabled           bool   `yaml:"enabled"`
 	UpstreamUrl       string `yaml:"upstreamUrl"`
 	UpstreamTimeoutMs int    `yaml:"upstreamTimeoutMs"`
 }
 
-type ProviderConfig struct {
-	Enabled bool `yaml:"enabled"`
-	Port    int  `yaml:"port"`
-}
 
 type CacheConfig struct {
 	L1 L1CacheConfig `yaml:"l1"`
@@ -90,11 +85,9 @@ func LoadConfig(path string) (*MeterGateConfig, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	if !cfg.Proxy.Enabled && !cfg.Provider.Enabled {
-		return nil, fmt.Errorf("at least one of proxy or provider mode must be enabled for security")
-	}
 
-	if cfg.Proxy.Enabled && cfg.Proxy.UpstreamUrl == "" {
+
+	if cfg.Proxy.UpstreamUrl == "" {
 		return nil, fmt.Errorf("upstreamUrl is required in proxy configuration for fail-fast boot")
 	}
 

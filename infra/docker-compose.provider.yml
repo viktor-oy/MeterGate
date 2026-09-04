@@ -1,4 +1,0 @@
-services:
-  metergate:
-    environment:
-      METERGATE_MODE: provider

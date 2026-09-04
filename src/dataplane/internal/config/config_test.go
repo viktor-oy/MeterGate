@@ -18,7 +18,6 @@ server:
   port: 8080
   apiKeyHeader: x-api-key
 proxy:
-  enabled: true
   upstreamUrl: http://localhost:8000
 plans:
   free:
@@ -43,7 +42,7 @@ protectedRoutes:
 	assert.NotNil(t, cfg)
 	assert.Equal(t, 8080, cfg.Server.Port)
 	assert.Equal(t, "x-api-key", cfg.Server.ApiKeyHeader)
-	assert.True(t, cfg.Proxy.Enabled)
+
 	
 	assert.Len(t, cfg.Plans, 1)
 	assert.Equal(t, "Free Tier", cfg.Plans["free"].DisplayName)
@@ -70,7 +69,6 @@ func TestLoadConfig_MissingUpstreamUrl(t *testing.T) {
 server:
   port: 8080
 proxy:
-  enabled: true
   upstreamUrl: ""
 `
 	err := os.WriteFile(yamlPath, []byte(yamlContent), 0644)
@@ -81,22 +79,4 @@ proxy:
 	assert.Contains(t, err.Error(), "upstreamUrl is required")
 }
 
-func TestLoadConfig_AllDisabled(t *testing.T) {
-	tempDir := t.TempDir()
-	yamlPath := filepath.Join(tempDir, "metergate-alldisabled.yml")
 
-	yamlContent := `
-server:
-  port: 8080
-proxy:
-  enabled: false
-provider:
-  enabled: false
-`
-	err := os.WriteFile(yamlPath, []byte(yamlContent), 0644)
-	assert.NoError(t, err)
-
-	_, err = config.LoadConfig(yamlPath)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "at least one of proxy or provider mode must be enabled")
-}

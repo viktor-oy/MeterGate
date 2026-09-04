@@ -10,8 +10,8 @@ done
 
 # Define default ports
 CP_PORT=3000
-DP_PROXY_PORT=8080
-DP_PROVIDER_PORT=8081
+DP_PORT=8080
+
 
 if [ "$OVERRIDE" -eq 1 ]; then
     echo "Checking and terminating processes on required ports..."
@@ -19,7 +19,7 @@ if [ "$OVERRIDE" -eq 1 ]; then
     pkill -f 'nest start --watch' || true
     pkill -f 'controlplane/main' || true
     
-    for PORT in $CP_PORT $DP_PROXY_PORT $DP_PROVIDER_PORT; do
+    for PORT in $CP_PORT $DP_PORT; do
         PIDS=$(lsof -t -i:$PORT || true)
         if [ ! -z "$PIDS" ]; then
             echo "Killing processes on port $PORT: $(echo $PIDS | tr '\n' ' ')"
@@ -28,7 +28,7 @@ if [ "$OVERRIDE" -eq 1 ]; then
     done
 else
     # Fail-fast check if ports are already in use
-    for PORT in $CP_PORT $DP_PROXY_PORT $DP_PROVIDER_PORT; do
+    for PORT in $CP_PORT $DP_PORT; do
         PID=$(lsof -t -i:$PORT || true)
         if [ ! -z "$PID" ]; then
             echo "================================================="
@@ -49,15 +49,15 @@ mise x -- npm run start:dev &
 CP_PID=$!
 
 echo "Starting Data Plane..."
-# We pass environment variables so both proxy and provider modes run on their dedicated ports
-cd src/dataplane && METERGATE_PROXY_PORT=$DP_PROXY_PORT METERGATE_PROVIDER_PORT=$DP_PROVIDER_PORT METERGATE_CONFIG_PATH="../../infra/metergate.yml" REDIS_HOST="localhost:6379" mise x -- go run cmd/dataplane/main.go &
+# We pass environment variables so data plane runs on its dedicated port
+cd src/dataplane && METERGATE_PORT=$DP_PORT METERGATE_CONFIG_PATH="../../infra/metergate.yml" REDIS_HOST="localhost:6379" mise x -- go run cmd/dataplane/main.go &
 DP_PID=$!
 
 echo ""
 echo "================================================="
 echo "Development environment is natively running!"
 echo "Control Plane PID: $CP_PID (Port $CP_PORT)"
-echo "Data Plane PID: $DP_PID (Proxy: $DP_PROXY_PORT, Provider: $DP_PROVIDER_PORT)"
+echo "Data Plane PID: $DP_PID (Port: $DP_PORT)"
 echo "Press Ctrl+C to shutdown."
 echo "================================================="
 echo ""

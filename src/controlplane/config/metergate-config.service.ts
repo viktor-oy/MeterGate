@@ -12,7 +12,6 @@ const configSchema = z.object({
     apiKeyHeader: z.string().min(1)
   }),
   proxy: z.object({
-    enabled: z.boolean(),
     upstreamUrl: z.url(),
     upstreamTimeoutMs: z.number().int().positive()
   }),

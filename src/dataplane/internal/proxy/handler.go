@@ -1,7 +1,6 @@
 package proxy
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,56 +43,7 @@ func (h *ProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.proxy.ServeHTTP(w, r)
 }
 
-// ProviderHandler handles explicitly the /v1/check endpoint.
-type ProviderHandler struct {
-	engine policy.Engine
-}
 
-func NewProviderHandler(engine policy.Engine) *ProviderHandler {
-	return &ProviderHandler{
-		engine: engine,
-	}
-}
-
-type checkRequest struct {
-	APIKey string `json:"apiKey"`
-	Method string `json:"method"`
-	Path   string `json:"path"`
-}
-
-func (h *ProviderHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || r.URL.Path != "/v1/check" {
-		http.NotFound(w, r)
-		return
-	}
-
-	var req checkRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, `{"error":"invalid_json"}`, http.StatusBadRequest)
-		return
-	}
-	defer r.Body.Close()
-
-	evalCtx := policy.EvaluationContext{
-		APIKey:   req.APIKey,
-		Method:   req.Method,
-		Path:     req.Path,
-		ClientIP: r.RemoteAddr,
-	}
-
-	decision := h.engine.Evaluate(r.Context(), evalCtx)
-
-	w.Header().Set("Content-Type", "application/json")
-	writeRateLimitHeaders(w, decision)
-
-	if !decision.Allowed {
-		w.WriteHeader(reasonToStatus(decision.Reason))
-	} else {
-		w.WriteHeader(http.StatusOK)
-	}
-
-	json.NewEncoder(w).Encode(decision)
-}
 
 // Shared helpers
 func extractAPIKey(r *http.Request) string {

@@ -69,12 +69,9 @@ server:
   port: 8089
   apiKeyHeader: "x-api-key"
 proxy:
-  enabled: true
   upstreamUrl: "` + upstream.URL + `"
   upstreamTimeoutMs: 5000
-provider:
-  enabled: true
-  port: 8090
+
 protectedRoutes:
   - id: "route_post"
     method: "POST"
@@ -132,16 +129,11 @@ plans:
 		var resp *http.Response
 		var err error
 
-		if mode == "Provider" {
-			reqBody := `{"apiKey": "` + apiKey + `", "method": "POST", "path": "/post"}`
-			resp, err = http.Post("http://localhost:8090/v1/check", "application/json", bytes.NewBufferString(reqBody))
-		} else { // Proxy
-			req, _ := http.NewRequest("POST", "http://localhost:8089/post", nil)
-			if apiKey != "" {
-				req.Header.Set("x-api-key", apiKey)
-			}
-			resp, err = http.DefaultClient.Do(req)
+		req, _ := http.NewRequest("POST", "http://localhost:8089/post", nil)
+		if apiKey != "" {
+			req.Header.Set("x-api-key", apiKey)
 		}
+		resp, err = http.DefaultClient.Do(req)
 		
 		if err != nil {
 			t.Fatalf("[%s] request failed: %v", mode, err)
@@ -156,44 +148,35 @@ plans:
 			t.Errorf("[%s] Expected status %v, got %v\nBinary Output: %s", mode, expectedStatus, resp.StatusCode, out.String())
 		}
 
-		// Additional check for Provider success
-		if mode == "Provider" && expectedStatus == http.StatusOK {
-			var decision map[string]interface{}
-			if err := json.NewDecoder(resp.Body).Decode(&decision); err != nil {
-				t.Fatalf("Failed to decode provider response: %v", err)
-			}
-			if allowed, ok := decision["Allowed"].(bool); !ok || !allowed {
-				t.Errorf("Expected Allowed to be true, got %v", decision["Allowed"])
-			}
-		}
+
 	}
 
 	t.Run("Success", func(t *testing.T) {
-		executeCheck(t, "Provider", "dummy_key", http.StatusOK, false)
+
 		executeCheck(t, "Proxy", "dummy_key", http.StatusOK, false)
 	})
 
 	t.Run("MissingKey", func(t *testing.T) {
-		executeCheck(t, "Provider", "", http.StatusUnauthorized, false)
+
 		executeCheck(t, "Proxy", "", http.StatusUnauthorized, false)
 	})
 
 	t.Run("InvalidKey", func(t *testing.T) {
-		executeCheck(t, "Provider", "wrong_key", http.StatusUnauthorized, false)
+
 		executeCheck(t, "Proxy", "wrong_key", http.StatusUnauthorized, false)
 	})
 
 	t.Run("RateLimitExhaustion", func(t *testing.T) {
-		// Fire 15 requests via Provider to exhaust the limit of 10
+		// Fire 15 requests to exhaust the limit of 10
 		for i := 0; i < 15; i++ {
-			executeCheck(t, "Provider", "dummy_key", 0, true)
+			executeCheck(t, "Proxy", "dummy_key", 0, true)
 		}
 
 		// Wait for the background aggregator to sweep and sync state to Redis/L1
 		time.Sleep(300 * time.Millisecond)
 
 		// Both modes should now be rate limited
-		executeCheck(t, "Provider", "dummy_key", http.StatusTooManyRequests, false)
+
 		executeCheck(t, "Proxy", "dummy_key", http.StatusTooManyRequests, false)
 	})
 

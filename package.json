@@ -21,8 +21,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "smoke:proxy": "bash scripts/smoke-proxy.sh",
-    "smoke:provider": "bash scripts/smoke-provider.sh"
+    "smoke:proxy": "bash scripts/smoke-proxy.sh"
   },
   "dependencies": {
     "@apollo/server": "^4.11.3",
