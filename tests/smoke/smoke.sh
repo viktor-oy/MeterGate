@@ -28,12 +28,16 @@ cleanup() {
         echo "Stopping Control Plane (PID: $SERVER_PID)..."
         kill $SERVER_PID || true
     fi
+    if [ -n "$DP_PID" ]; then
+        echo "Stopping Data Plane (PID: $DP_PID)..."
+        kill $DP_PID || true
+    fi
 }
 trap cleanup EXIT
 
 # Wait for the server to be ready
 echo "Waiting for server to listen on port $METERGATE_PORT..."
-TIMEOUT=15
+TIMEOUT=30
 while ! curl -s http://localhost:$METERGATE_PORT/health > /dev/null; do
     TIMEOUT=$((TIMEOUT - 1))
     if [ $TIMEOUT -eq 0 ]; then
@@ -43,7 +47,30 @@ while ! curl -s http://localhost:$METERGATE_PORT/health > /dev/null; do
     sleep 1
 done
 
-echo "Server is up!"
+echo "Control Plane is up!"
+
+echo "Building and starting Data Plane..."
+cd src/dataplane
+export REDIS_HOST="localhost:6379"
+export DISABLE_ZERO_ALLOC="false"
+export METERGATE_CONFIG_PATH="../../infra/metergate.yml"
+mise x -- go build -o ../../bin/test-dataplane cmd/dataplane/main.go
+METERGATE_PORT=8080 ../../bin/test-dataplane &
+DP_PID=$!
+cd ../..
+
+echo "Waiting for Data Plane to listen on port 6060..."
+TIMEOUT=30
+while ! curl -s http://localhost:6060/health > /dev/null; do
+    TIMEOUT=$((TIMEOUT - 1))
+    if [ $TIMEOUT -eq 0 ]; then
+        echo "Error: Data Plane failed to start within time."
+        exit 1
+    fi
+    sleep 1
+done
+
+echo "Data Plane is up!"
 
 # Run Smoke Tests
 
@@ -54,7 +81,25 @@ if [ "$HEALTH_STATUS" != "200" ]; then
     echo "Failed: GET /health returned $HEALTH_STATUS"
     exit 1
 fi
-echo "Pass: GET /health returned 200 OK"
+echo "Pass: GET /health (Control Plane) returned 200 OK"
+
+# 2. Data Plane Healthcheck
+echo "Testing GET /health (Data Plane on :6060)..."
+DP_HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health)
+if [ "$DP_HEALTH_STATUS" != "200" ]; then
+    echo "Failed: GET /health (Data Plane) returned $DP_HEALTH_STATUS"
+    exit 1
+fi
+echo "Pass: GET /health (Data Plane) returned 200 OK"
+
+# 3. Data Plane Metrics
+echo "Testing GET /metrics (Data Plane on :6060)..."
+DP_METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/metrics)
+if [ "$DP_METRICS_STATUS" != "200" ]; then
+    echo "Failed: GET /metrics (Data Plane) returned $DP_METRICS_STATUS"
+    exit 1
+fi
+echo "Pass: GET /metrics (Data Plane) returned 200 OK"
 
 # 2. GraphQL Introspection Check (should return 400 since we aren't passing a valid query, but proves endpoint is alive)
 echo "Testing POST /graphql..."
@@ -65,14 +110,6 @@ if [ "$CHECK_STATUS" != "400" ]; then
 fi
 echo "Pass: POST /graphql returned 400 Bad Request"
 
-# 3. OpenTelemetry Metrics Check (should return 200 with Prometheus metrics)
-echo "Testing GET /metrics (Port 9464)..."
-METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9464/metrics)
-if [ "$METRICS_STATUS" != "200" ]; then
-    echo "Failed: GET /metrics returned $METRICS_STATUS"
-    exit 1
-fi
-echo "Pass: GET /metrics returned 200 OK"
 
 # 4. Database Seeding Check
 echo "Testing Database Seeding..."

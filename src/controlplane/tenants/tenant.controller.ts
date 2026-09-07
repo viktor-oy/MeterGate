@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, ConflictException } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Param, Body, HttpCode, HttpStatus, ConflictException, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { PrismaService } from './prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -31,5 +31,40 @@ export class TenantController {
     });
 
     return tenant;
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List all Tenants' })
+  @ApiResponse({ status: 200, description: 'List of tenants' })
+  async findAll() {
+    return this.prisma.tenant.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a Tenant by ID' })
+  @ApiResponse({ status: 200, description: 'The tenant' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async findOne(@Param('id') id: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id }
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    return tenant;
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a Tenant' })
+  @ApiResponse({ status: 204, description: 'Tenant successfully deleted' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async remove(@Param('id') id: string) {
+    const exists = await this.prisma.tenant.findUnique({ where: { id } });
+    if (!exists) throw new NotFoundException('Tenant not found');
+
+    await this.prisma.tenant.delete({
+      where: { id }
+    });
   }
 }

@@ -5,7 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { json } from 'express';
 import { AppModule } from './app.module';
 import { MeterGateConfigService } from './config/metergate-config.service';
-import { StructuredLoggerService } from './observability/structured-logger.service';
+import { Logger } from '@nestjs/common';
 
 type JsonResponse = {
   json: (body: unknown) => void;
@@ -17,10 +17,8 @@ type HttpAdapterWithGet = {
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
-  const logger = app.get(StructuredLoggerService);
   const config = app.get(MeterGateConfigService);
-
-  app.useLogger(logger);
+  const logger = new Logger('Bootstrap');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
   app.use(json({ limit: '1mb' }));
   app.enableCors({
@@ -46,7 +44,7 @@ async function bootstrap(): Promise<void> {
 
   const port = config.getPort();
   await app.listen(port, '0.0.0.0');
-  logger.log(`MeterGate listening on ${String(port)}`, 'Bootstrap');
+  logger.log(`MeterGate listening on ${String(port)}`);
 }
 
 void bootstrap();

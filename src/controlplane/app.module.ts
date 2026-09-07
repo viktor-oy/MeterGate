@@ -7,8 +7,7 @@ import { HealthController } from './http/health.controller';
 import { HealthResolver } from './http/health.resolver';
 import { RequestIdMiddleware } from './http/request-id.middleware';
 import { ApiKeyHashService } from './keys/api-key-hash.service';
-import { OtelService } from './observability/otel.service';
-import { StructuredLoggerService } from './observability/structured-logger.service';
+
 import { RedisService } from './redis/redis.service';
 import { PrismaService } from './tenants/prisma.service';
 import { CacheSyncService } from './sync/cache-sync.service';
@@ -22,8 +21,6 @@ import { ApiKeyController } from './keys/api-key.controller';
     ApiKeyHashService,
     RedisService,
     PrismaService,
-    StructuredLoggerService,
-    OtelService,
     HealthResolver,
     CacheSyncService
   ],

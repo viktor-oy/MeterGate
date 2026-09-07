@@ -12,7 +12,6 @@ cache:
     routeTtlSeconds: 300
     apiKeyTtlSeconds: 30
     tenantPlanTtlSeconds: 60
-    blacklistTtlSeconds: 15
     configTtlSeconds: 300
   l2:
     apiKeyTtlSeconds: 30
@@ -45,8 +44,3 @@ plans:
       graphql:
         limit: 20
         unit: minute
-
-blacklist:
-  staticApiKeyHashes:
-    - 6a2dbb79944a67e8f6fe7ea3e96f6c9af8f43d897780d589740d925668aa3c83
-

@@ -21,7 +21,6 @@ const configSchema = z.object({
       routeTtlSeconds: z.number().int().positive(),
       apiKeyTtlSeconds: z.number().int().positive(),
       tenantPlanTtlSeconds: z.number().int().positive(),
-      blacklistTtlSeconds: z.number().int().positive(),
       configTtlSeconds: z.number().int().positive()
     }),
     l2: z.object({
@@ -53,10 +52,7 @@ const configSchema = z.object({
         })
       )
     })
-  ),
-  blacklist: z.object({
-    staticApiKeyHashes: z.array(z.string().regex(/^[a-f0-9]{64}$/i))
-  })
+  )
 });
 
 @Injectable()
@@ -83,10 +79,6 @@ export class MeterGateConfigService {
 
   getPlanLimit(planCode: string, group: string): PlanLimit | undefined {
     return this.config.plans[planCode]?.groups[group];
-  }
-
-  getStaticBlacklistHashes(): ReadonlySet<string> {
-    return new Set(this.config.blacklist.staticApiKeyHashes.map((hash) => hash.toLowerCase()));
   }
 
   ttlSeconds(unit: PlanLimit['unit']): number {

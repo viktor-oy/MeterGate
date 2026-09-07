@@ -15,7 +15,6 @@ export type MeterGateConfig = {
       routeTtlSeconds: number;
       apiKeyTtlSeconds: number;
       tenantPlanTtlSeconds: number;
-      blacklistTtlSeconds: number;
       configTtlSeconds: number;
     };
     l2: {
@@ -44,9 +43,6 @@ export type MeterGateConfig = {
       >;
     }
   >;
-  blacklist: {
-    staticApiKeyHashes: string[];
-  };
 };
 
 export type PlanLimit = {

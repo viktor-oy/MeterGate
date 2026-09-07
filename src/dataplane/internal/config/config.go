@@ -17,7 +17,6 @@ type MeterGateConfig struct {
 	Cache           CacheConfig     `yaml:"cache"`
 	ProtectedRoutes []RouteConfig   `yaml:"protectedRoutes"`
 	Plans           map[string]Plan `yaml:"plans"`
-	Blacklist       BlacklistConfig `yaml:"blacklist"`
 }
 
 type ServerConfig struct {
@@ -41,7 +40,6 @@ type L1CacheConfig struct {
 	RouteTtlSeconds      int `yaml:"routeTtlSeconds"`
 	ApiKeyTtlSeconds     int `yaml:"apiKeyTtlSeconds"`
 	TenantPlanTtlSeconds int `yaml:"tenantPlanTtlSeconds"`
-	BlacklistTtlSeconds  int `yaml:"blacklistTtlSeconds"`
 	ConfigTtlSeconds     int `yaml:"configTtlSeconds"`
 }
 
@@ -69,9 +67,7 @@ type RateLimitGroupConfig struct {
 	Unit  string `yaml:"unit"`
 }
 
-type BlacklistConfig struct {
-	StaticApiKeyHashes []string `yaml:"staticApiKeyHashes"`
-}
+
 
 // LoadConfig parses the metergate.yml file.
 func LoadConfig(path string) (*MeterGateConfig, error) {

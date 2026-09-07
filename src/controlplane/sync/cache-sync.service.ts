@@ -44,13 +44,6 @@ export class CacheSyncService implements OnModuleInit {
   private async performSync(): Promise<void> {
     const conf = this.config.get();
 
-    // 1. Publish static blacklist state to Redis L2 set
-    if (conf.blacklist.staticApiKeyHashes.length > 0) {
-      const pipeline = this.redis.client.pipeline();
-      pipeline.sadd('metergate:blacklist:api-key-hashes', ...conf.blacklist.staticApiKeyHashes);
-      await pipeline.exec();
-    }
-
     // 2. Publish plan configuration (including shardCount) to Redis L2
     for (const [planCode, plan] of Object.entries(conf.plans)) {
       await this.redis.setJson(`metergate:plan:${planCode}`, { shardCount: plan.shardCount }, conf.cache.l2.tenantPlanTtlSeconds);

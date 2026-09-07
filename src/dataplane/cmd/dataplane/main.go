@@ -15,6 +15,7 @@ import (
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/config"
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/policy"
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/proxy"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
@@ -98,6 +99,7 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		})
+		mux.Handle("/metrics", promhttp.Handler())
 		log.Println("Starting diagnostics server on :6060 (Liveness Probes & Metrics)")
 		if err := http.ListenAndServe(":6060", mux); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Diagnostics server failed: %v", err)

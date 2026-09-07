@@ -21,7 +21,7 @@ describe('CacheSyncService (Leader Election)', () => {
 
     const configMock = {
       get: jest.fn().mockReturnValue({
-        blacklist: { staticApiKeyHashes: [] },
+
         plans: {},
         cache: { l2: { apiKeyTtlSeconds: 60, tenantPlanTtlSeconds: 60 } }
       })

@@ -22,7 +22,7 @@ MeterGate is a CV-grade, high-performance metering and quota enforcement gateway
 
 - Exposes both OpenAPI REST (Swagger at `/docs`) and GraphQL (`/graphql`) sharing the exact same underlying services.
 - Acts as the single source of truth for Tenant, Plan, and API Key metadata.
-- Asynchronously publishes authoritative cache states (Tenants/Keys/Blacklists) to the Redis L2 cluster.
+- Asynchronously publishes authoritative cache states (Tenants/Keys) to the Redis L2 cluster.
 
 ## Data Plane (Go)
 

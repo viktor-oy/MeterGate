@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, HttpCode, HttpStatus, NotFoundException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../tenants/prisma.service';
@@ -53,5 +53,42 @@ export class ApiKeyController {
       rawApiKey: fullKey,
       createdAt: apiKey.createdAt
     };
+  }
+
+  @Get('tenant/:tenantId')
+  @ApiOperation({ summary: 'List all API Keys for a Tenant' })
+  @ApiResponse({ status: 200, description: 'List of API Keys (raw keys not included)' })
+  async findByTenant(@Param('tenantId') tenantId: string) {
+    return this.prisma.apiKey.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        tenantId: true,
+        name: true,
+        keyPrefix: true,
+        createdAt: true,
+        revokedAt: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  @Post(':id/revoke')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Revoke an API Key' })
+  @ApiResponse({ status: 200, description: 'API Key successfully revoked' })
+  @ApiResponse({ status: 404, description: 'API Key not found' })
+  async revoke(@Param('id') id: string) {
+    const key = await this.prisma.apiKey.findUnique({ where: { id } });
+    if (!key) throw new NotFoundException('API Key not found');
+
+    if (!key.revokedAt) {
+      await this.prisma.apiKey.update({
+        where: { id },
+        data: { revokedAt: new Date() }
+      });
+    }
+
+    return { success: true, message: 'API Key revoked' };
   }
 }

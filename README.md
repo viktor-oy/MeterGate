@@ -27,7 +27,7 @@ graph TB
             RL["Rate Limiter<br/>(atomic counters + Redis)"]
         end
 
-        REDIS["Redis<br/>(L2 Cache + Rate Limits + Blacklist)"]
+        REDIS["Redis<br/>(L2 Cache + Rate Limits)"]
 
         WEB -- "Proxy Mode" --> HANDLER
         HANDLER --> POLICY
@@ -45,7 +45,7 @@ The architecture is split into two distinct planes:
 1. **Control Plane (NestJS):**
 - Exposes both OpenAPI REST (Swagger at `/docs`) and GraphQL (`/graphql`) sharing the exact same underlying services.
 - Acts as the single source of truth for Tenant, Plan, and API Key metadata.
-- **Leader-Elected Cache Syncing**: Periodically synchronizes authoritative database state to Redis L2 (`metergate:cache:*`). Uses a Redis Distributed Lock (`SET NX EX`) to ensure only one Control Plane node executes the heavy database sweep, preventing stampedes in horizontally scaled, multi-replica clusters.
+- **Leader-Elected Cache Syncing**: Asynchronously publishes authoritative cache states (Tenants/Keys) to the Redis L2 cluster. Uses a Redis Distributed Lock (`SET NX EX`) to ensure only one Control Plane node executes the heavy database sweep, preventing stampedes in horizontally scaled, multi-replica clusters.
 2. **Data Plane (Go 1.22+):** A highly concurrent, zero-allocation reverse proxy that sits on the hot path. It validates API keys and enforces distributed rate limits at over 50,000 QPS using local L1 caches and a sharded Redis L2 topology.
 
 ### Synchronisation Contract (Control Plane → Data Plane)
@@ -54,7 +54,6 @@ The architecture is split into two distinct planes:
 |---|---|---|---|
 | API key validation cache | `apikey:{hash}` | Control Plane | Data Plane L2 lookup |
 | Plan configuration (shard info) | `metergate:plan:{planCode}` | Control Plane | Data Plane (topology aware) |
-| Dynamic blacklist | `metergate:blacklist:api-key-hashes` (SET) | Control Plane | Data Plane |
 | Rate limit counters | `metergate:rate:{tenant}:{route}:{plan}:{window}` | Data Plane (Lua INCR) | Data Plane |
 
 ## Engineering Decisions & Trade-offs

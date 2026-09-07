@@ -18,7 +18,7 @@ import (
 // Reason string constants for policy decisions
 const (
 	ReasonAllowed          = "allowed"
-	ReasonBlacklisted      = "blacklisted"
+
 	ReasonInvalidKey       = "invalid_api_key"
 	ReasonRouteNotFound    = "route_not_found"
 	ReasonRateLimited      = "rate_limited"

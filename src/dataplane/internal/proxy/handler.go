@@ -65,7 +65,7 @@ func reasonToStatus(reason string) int {
 	switch reason {
 	case policy.ReasonMissingHeader, policy.ReasonInvalidKey:
 		return http.StatusUnauthorized
-	case policy.ReasonBlacklisted:
+
 		return http.StatusForbidden
 	case policy.ReasonRateLimited:
 		return http.StatusTooManyRequests
