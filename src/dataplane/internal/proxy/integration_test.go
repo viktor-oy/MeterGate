@@ -100,6 +100,8 @@ plans:
 		"METERGATE_CONFIG_PATH="+configPath,
 		"REDIS_HOST="+redisHost,
 		"DISABLE_ZERO_ALLOC=false",
+		"METERGATE_METRICS_PORT=6069",
+		"METERGATE_KEY_HASH_SECRET=local-demo-secret-change-me",
 	)
 	
 	// We capture output to help debugging if it fails
@@ -115,7 +117,7 @@ plans:
 	time.Sleep(2 * time.Second)
 	
 	t.Run("HealthCheck", func(t *testing.T) {
-		resp, err := http.Get("http://localhost:6060/health")
+		resp, err := http.Get("http://localhost:6069/health")
 		if err != nil {
 			t.Fatalf("Health check failed to connect: %v\nOutput: %s", err, out.String())
 		}
@@ -178,6 +180,32 @@ plans:
 		// Both modes should now be rate limited
 
 		executeCheck(t, "Proxy", "dummy_key", http.StatusTooManyRequests, false)
+	})
+
+	t.Run("Metrics", func(t *testing.T) {
+		resp, err := http.Get("http://localhost:6069/metrics")
+		if err != nil {
+			t.Fatalf("Failed to scrape metrics: %v", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status 200, got %v", resp.StatusCode)
+		}
+		
+		buf := new(bytes.Buffer)
+		buf.ReadFrom(resp.Body)
+		
+		expectedMetrics := []string{
+			"metergate_policy_eval_duration_seconds",
+			"metergate_policy_decisions_total",
+			"metergate_redis_operation_duration_seconds",
+			"metergate_cache_operations_total",
+		}
+		for _, m := range expectedMetrics {
+			if !bytes.Contains(buf.Bytes(), []byte(m)) {
+				t.Errorf("Expected metric %s not found in /metrics output", m)
+			}
+		}
 	})
 
 	// Clean shutdown

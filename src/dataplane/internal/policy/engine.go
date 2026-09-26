@@ -12,6 +12,7 @@ import (
 
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/cache"
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/config"
+	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/telemetry"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -61,10 +62,10 @@ type CoreEngine struct {
 	hashSecret  string
 }
 
-func NewCoreEngine(cfg *config.MeterGateConfig, l1 *cache.L1Cache, rl *RateLimiter, rc redis.UniversalClient) *CoreEngine {
+func NewCoreEngine(cfg *config.MeterGateConfig, l1 *cache.L1Cache, rl *RateLimiter, rc redis.UniversalClient) (*CoreEngine, error) {
 	secret := os.Getenv("METERGATE_KEY_HASH_SECRET")
 	if secret == "" {
-		secret = "local-demo-secret-change-me"
+		return nil, fmt.Errorf("METERGATE_KEY_HASH_SECRET environment variable is required")
 	}
 	return &CoreEngine{
 		cfg:         cfg,
@@ -72,18 +73,50 @@ func NewCoreEngine(cfg *config.MeterGateConfig, l1 *cache.L1Cache, rl *RateLimit
 		rateLimiter: rl,
 		redisClient: rc,
 		hashSecret:  secret,
+	}, nil
+}
+
+// hashAPIKey safely generates the sha256 hash used as the key in L1/L2 Cache.
+// PERF OPTIMIZATION: This explicitly returns a stack-allocated [32]byte array (pure value type)
+// to be safely used as a strongly-typed, zero-allocation map key in the L1Cache.
+func (e *CoreEngine) hashAPIKey(apiKey string) cache.APIKeyHash {
+	// Strict overflow validation to guarantee we don't exceed our 256-byte stack buffer.
+	totalLen := len(e.hashSecret) + 1 + len(apiKey)
+	
+	if totalLen > 256 {
+		// Fallback to heap allocation for abnormally large keys to prevent stack overflow/panic
+		buf := make([]byte, totalLen)
+		n := copy(buf, e.hashSecret)
+		buf[n] = ':'
+		copy(buf[n+1:], apiKey)
+		return sha256.Sum256(buf)
 	}
+
+	// Hot-path zero-allocation execution
+	var buf [256]byte
+	n := copy(buf[:], e.hashSecret)
+	buf[n] = ':'
+	copy(buf[n+1:], apiKey)
+	
+	return sha256.Sum256(buf[:totalLen])
 }
 
-// hashAPIKey safely generates the sha256 hex string used as the key in Redis L2.
-func (e *CoreEngine) hashAPIKey(apiKey string) string {
-	h := sha256.New()
-	h.Write([]byte(e.hashSecret + ":" + apiKey))
-	return hex.EncodeToString(h.Sum(nil))
-}
-
-// Evaluate performs the zero-allocation chain of policy checks.
+// Evaluate performs the zero-allocation chain of policy checks and instruments telemetry.
 func (e *CoreEngine) Evaluate(ctx context.Context, evalCtx EvaluationContext) PolicyDecision {
+	start := time.Now()
+	decision := e.evaluateInternal(ctx, evalCtx)
+	
+	telemetry.PolicyEvalDuration.WithLabelValues(decision.RouteID, decision.Plan).Observe(time.Since(start).Seconds())
+	decisionStr := "deny"
+	if decision.Allowed {
+		decisionStr = "allow"
+	}
+	telemetry.PolicyDecisions.WithLabelValues(decisionStr, decision.Reason, decision.RouteID, decision.Plan).Inc()
+	
+	return decision
+}
+
+func (e *CoreEngine) evaluateInternal(ctx context.Context, evalCtx EvaluationContext) PolicyDecision {
 	// 1. Missing API Key Check
 	if evalCtx.APIKey == "" {
 		return PolicyDecision{Allowed: false, Reason: ReasonMissingHeader}
@@ -91,13 +124,23 @@ func (e *CoreEngine) Evaluate(ctx context.Context, evalCtx EvaluationContext) Po
 
 	keyHash := e.hashAPIKey(evalCtx.APIKey)
 
-	// 2. Resolve Tenant from L1/L2
+	// 1. Check in-memory L1 cache (Read-Only Fast Path)
 	tenantData, err := e.l1Cache.FetchTenantWithSingleflight(keyHash, func() (cache.TenantData, error) {
-		// Fallback to Redis L2
-		val, err := e.redisClient.Get(ctx, "metergate:cache:apikey:"+keyHash).Result()
+		// The fetch function is only invoked on an L1 Cache Miss.
+		
+		// Encode to hex string for the Redis network request
+		hexKey := hex.EncodeToString(keyHash[:])
+		redisKey := "metergate:cache:apikey:" + hexKey
+		
+		startRedis := time.Now()
+		val, err := e.redisClient.Get(ctx, redisKey).Result()
+		telemetry.RedisOperationDuration.WithLabelValues("GET").Observe(time.Since(startRedis).Seconds())
+		
 		if err != nil {
+			telemetry.CacheOperations.WithLabelValues("L2", "miss").Inc()
 			return cache.TenantData{}, err
 		}
+		telemetry.CacheOperations.WithLabelValues("L2", "hit").Inc()
 		var data struct {
 			TenantID string `json:"tenantId"`
 			PlanCode string `json:"planCode"`
@@ -151,8 +194,15 @@ func (e *CoreEngine) Evaluate(ctx context.Context, evalCtx EvaluationContext) Po
 		}
 	}
 
-	e.rateLimiter.Track(tenantData.TenantID, matchedRoute.ID)
-	allowed, remaining := e.rateLimiter.CheckAndRecord(ctx, tenantData.TenantID, matchedRoute.ID, plan.ShardCount, groupCfg.Limit)
+	divisor := int64(60) // default minute
+	if groupCfg.Unit == "second" {
+		divisor = 1
+	} else if groupCfg.Unit == "hour" {
+		divisor = 3600
+	}
+
+	e.rateLimiter.Track(tenantData.TenantID, matchedRoute.ID, plan.ShardCount, divisor)
+	allowed, remaining := e.rateLimiter.CheckAndRecord(ctx, tenantData.TenantID, matchedRoute.ID, plan.ShardCount, groupCfg.Limit, divisor)
 	if !allowed {
 		return PolicyDecision{
 			Allowed:   false,

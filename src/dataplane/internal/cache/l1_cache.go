@@ -1,10 +1,11 @@
 package cache
 
 import (
+	"context"
 	"sync"
-	"sync/atomic"
+	"time"
 
-	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/config"
+	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/telemetry"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -16,107 +17,114 @@ const (
 
 // TenantData holds the tenant and plan metadata resolved from an API Key.
 type TenantData struct {
-	TenantID string
-	Plan     string
+	TenantID  string
+	Plan      string
+	ExpiresAt time.Time
 }
 
+// APIKeyHash represents the raw 32-byte SHA-256 hash of an API key, used as a zero-allocation map key.
+type APIKeyHash [32]byte
+
 // cacheShard is a single shard of the concurrent map, protected by an RWMutex.
+// Padding prevents false sharing between cache lines on multi-core systems.
 type cacheShard struct {
 	sync.RWMutex
-	data map[string]TenantData
+	data map[APIKeyHash]TenantData
+	_    [64]byte // CPU cache line padding
 }
 
 // L1Cache implements a highly concurrent, zero-allocation memory cache.
 type L1Cache struct {
 	shards []*cacheShard
-	routes atomic.Pointer[[]config.RouteConfig]
 	sfg    singleflight.Group
+	ttl    int64
 }
 
 // NewL1Cache initializes the L1 cache.
-func NewL1Cache() *L1Cache {
+func NewL1Cache(ttlSeconds int) *L1Cache {
 	c := &L1Cache{
 		shards: make([]*cacheShard, numShards),
+		ttl:    int64(ttlSeconds),
 	}
 	for i := 0; i < numShards; i++ {
 		c.shards[i] = &cacheShard{
-			data: make(map[string]TenantData),
+			data: make(map[APIKeyHash]TenantData),
 		}
 	}
-	// Initialize empty routes
-	emptyRoutes := make([]config.RouteConfig, 0)
-	c.routes.Store(&emptyRoutes)
 	return c
 }
 
-// hashStringFNV1a computes the FNV-1a hash of a string natively without allocating a byte slice.
-// This is critical for zero-allocation on the hot path.
-func hashStringFNV1a(key string) uint32 {
-	hash := uint32(offset32)
-	for i := 0; i < len(key); i++ {
-		hash ^= uint32(key[i])
+// hashBytesFNV1a efficiently hashes a byte slice to an index
+func hashBytesFNV1a(data []byte) uint32 {
+	var hash uint32 = offset32
+	for _, b := range data {
+		hash ^= uint32(b)
 		hash *= prime32
 	}
 	return hash
 }
 
-// getShard returns the specific lock shard for the given API key.
-func (c *L1Cache) getShard(key string) *cacheShard {
-	return c.shards[hashStringFNV1a(key)%numShards]
+// getShard resolves which shard protects the given key
+func (c *L1Cache) getShard(keyHash APIKeyHash) *cacheShard {
+	return c.shards[hashBytesFNV1a(keyHash[:])%numShards]
 }
 
 // GetTenantData retrieves tenant data from the cache.
 // Returns false if not found.
-func (c *L1Cache) GetTenantData(apiKey string) (TenantData, bool) {
-	shard := c.getShard(apiKey)
+func (c *L1Cache) GetTenantData(keyHash APIKeyHash) (TenantData, bool) {
+	shard := c.getShard(keyHash)
 	shard.RLock()
-	data, found := shard.data[apiKey]
+	data, found := shard.data[keyHash]
 	shard.RUnlock()
+
+	// Enforce TTL lazily without locking for writes. time.Now().After() uses the monotonic clock.
+	if found && time.Now().After(data.ExpiresAt) {
+		return TenantData{}, false
+	}
 	return data, found
 }
 
-// SetTenantData sets tenant data into the cache.
-func (c *L1Cache) SetTenantData(apiKey string, data TenantData) {
-	shard := c.getShard(apiKey)
+// SetTenantData sets tenant data into the cache with the configured TTL.
+func (c *L1Cache) SetTenantData(keyHash APIKeyHash, data TenantData) {
+	data.ExpiresAt = time.Now().Add(time.Duration(c.ttl) * time.Second)
+	shard := c.getShard(keyHash)
 	shard.Lock()
-	shard.data[apiKey] = data
+	shard.data[keyHash] = data
 	shard.Unlock()
 }
 
-// LoadRoutes returns a pointer to the current route table safely.
-// This uses the RCU (Read-Copy-Update) pattern via atomic.Pointer.
-func (c *L1Cache) LoadRoutes() *[]config.RouteConfig {
-	return c.routes.Load()
-}
 
-// UpdateRoutes applies the Read-Copy-Update pattern to swap the route table entirely lock-free.
-func (c *L1Cache) UpdateRoutes(newRoutes []config.RouteConfig) {
-	c.routes.Store(&newRoutes)
-}
 
 // FetchTenantWithSingleflight deduplicates simultaneous requests for the same API key,
 // preventing a Thundering Herd effect on the Redis L2 or PostgreSQL database.
-func (c *L1Cache) FetchTenantWithSingleflight(apiKey string, fetchFn func() (TenantData, error)) (TenantData, error) {
+func (c *L1Cache) FetchTenantWithSingleflight(keyHash APIKeyHash, fetchFn func() (TenantData, error)) (TenantData, error) {
 	// First check cache normally (lock-free on the group, but RWMutex on the shard)
-	if data, found := c.GetTenantData(apiKey); found {
+	// FAST PATH: Zero-allocation cache hit!
+	if data, found := c.GetTenantData(keyHash); found {
+		telemetry.CacheOperations.WithLabelValues("L1", "hit").Inc()
 		return data, nil
 	}
 
+	// SLOW PATH: Cache miss. We allocate a string for singleflight and Redis network boundary.
+	sfKey := string(keyHash[:])
+
 	// Not found, use singleflight to collapse identical concurrent fetchFn calls
-	res, err, _ := c.sfg.Do(apiKey, func() (interface{}, error) {
+	res, err, _ := c.sfg.Do(sfKey, func() (interface{}, error) {
 		// Double check inside singleflight in case another flight just finished and populated the cache
-		if data, found := c.GetTenantData(apiKey); found {
+		if data, found := c.GetTenantData(keyHash); found {
+			telemetry.CacheOperations.WithLabelValues("L1", "hit").Inc()
 			return data, nil
 		}
 		
+		telemetry.CacheOperations.WithLabelValues("L1", "miss").Inc()
 		// Actually fetch from L2/DB
 		data, fetchErr := fetchFn()
 		if fetchErr != nil {
 			return TenantData{}, fetchErr
 		}
 		
-		// Update L1 cache
-		c.SetTenantData(apiKey, data)
+		// Update L1 cache with dynamic TTL
+		c.SetTenantData(keyHash, data)
 		return data, nil
 	})
 
@@ -124,4 +132,30 @@ func (c *L1Cache) FetchTenantWithSingleflight(apiKey string, fetchFn func() (Ten
 		return TenantData{}, err
 	}
 	return res.(TenantData), nil
+}
+
+// StartSweeper begins a background goroutine that passively cleans up expired keys 
+// from the shards every 10 seconds to prevent memory leaks.
+func (c *L1Cache) StartSweeper(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				now := time.Now()
+				for _, shard := range c.shards {
+					shard.Lock()
+					for k, v := range shard.data {
+						if now.After(v.ExpiresAt) {
+							delete(shard.data, k)
+						}
+					}
+					shard.Unlock()
+				}
+			}
+		}
+	}()
 }

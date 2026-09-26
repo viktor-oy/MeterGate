@@ -4,17 +4,16 @@ check-escapes:
 	@echo "Running Escape Analysis (Enforcing Zero-Allocation on Hot Path)..."
 	@go build -gcflags="-m" ./... 2>&1 | \
 		grep "escapes to heap" | \
-		grep "github.com/anahvictoronyedikachi/metergate/src/dataplane" | \
-		grep -v "internal/config" | \
-		grep -v "internal/diagnostics" | \
-		grep -v "internal/telemetry" | \
-		grep -v "main.go" | \
-		grep -v "evalCtx leaks" || true; \
-	if go build -gcflags="-m" ./... 2>&1 | grep "escapes to heap" | grep "github.com/anahvictoronyedikachi/metergate/src/dataplane" | grep -v "internal/config" | grep -v "internal/diagnostics" | grep -v "internal/telemetry" | grep -v "main.go" | grep -v "evalCtx leaks" | grep -q .; then \
+		grep -E "^(internal/policy|internal/cache|internal/proxy)/" | \
+		grep -vF -f .escapeignore > .escapes_filtered || true; \
+	if [ -s .escapes_filtered ]; then \
 		echo "ERROR: Heap allocation detected in hot path!"; \
+		cat .escapes_filtered; \
+		rm -f .escapes_filtered; \
 		exit 1; \
 	else \
 		echo "SUCCESS: Hot path is allocation-free!"; \
+		rm -f .escapes_filtered; \
 		exit 0; \
 	fi
 

@@ -2,8 +2,9 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
+	"net/http/pprof"
 	"net/url"
 	"os"
 	"os/signal"
@@ -15,47 +16,56 @@ import (
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/config"
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/policy"
 	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/proxy"
+	"github.com/anahvictoronyedikachi/metergate/src/dataplane/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 func main() {
+	telemetry.InitLogger(slog.LevelInfo)
+
 	configPath := os.Getenv("METERGATE_CONFIG_PATH")
 	if configPath == "" {
 		configPath = "/app/config/metergate.yml" // Default inside container
 	}
 
-	log.Printf("Loading configuration from %s", configPath)
+	slog.Info("Loading configuration", "path", configPath)
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		slog.Error("Failed to load configuration", "error", err)
+		os.Exit(1)
 	}
 
 	redisClient, err := config.InitRedisClient()
 	if err != nil {
-		log.Fatalf("Fail-Fast Redis Initialization Error: %v", err)
+		slog.Error("Fail-Fast Redis Initialization Error", "error", err)
+		os.Exit(1)
 	}
 	defer redisClient.Close()
-	log.Println("Redis Client initialized successfully.")
+	slog.Info("Redis Client initialized successfully.")
 
 	// Check for chaos feature flag
 	disableZeroAllocStr := os.Getenv("DISABLE_ZERO_ALLOC")
 	disableZeroAlloc, _ := strconv.ParseBool(disableZeroAllocStr)
 	if disableZeroAlloc {
-		log.Println("WARNING: DISABLE_ZERO_ALLOC chaos flag is ENABLED. sync.Pool is bypassed.")
+		slog.Warn("DISABLE_ZERO_ALLOC chaos flag is ENABLED. sync.Pool is bypassed.")
 	}
 
 	// Initialize components
-	l1Cache := cache.NewL1Cache()
+	l1Cache := cache.NewL1Cache(cfg.Cache.L1.ApiKeyTtlSeconds)
 	rateLimiter := policy.NewRateLimiter(redisClient)
-	engine := policy.NewCoreEngine(cfg, l1Cache, rateLimiter, redisClient)
+	engine, err := policy.NewCoreEngine(cfg, l1Cache, rateLimiter, redisClient)
+	if err != nil {
+		slog.Error("Failed to initialize CoreEngine", "error", err)
+		os.Exit(1)
+	}
 
 	// Track servers for graceful shutdown
 	var servers []*http.Server
 
-
 	upstreamURL, err := url.Parse(cfg.Proxy.UpstreamUrl)
 	if err != nil {
-		log.Fatalf("Failed to parse upstream URL: %v", err)
+		slog.Error("Failed to parse upstream URL", "error", err)
+		os.Exit(1)
 	}
 	reverseProxy := proxy.NewMeterGateProxy(upstreamURL, disableZeroAlloc)
 	proxyHandler := proxy.NewProxyHandler(engine, reverseProxy)
@@ -75,9 +85,10 @@ func main() {
 	}
 	servers = append(servers, srv)
 	go func() {
-		log.Printf("Starting MeterGate Data Plane on :%d", serverPort)
+		slog.Info("Starting MeterGate Data Plane", "port", serverPort)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Proxy Server failed: %v", err)
+			slog.Error("Proxy Server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -85,8 +96,9 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Start background aggregator
-	rateLimiter.StartBackgroundAggregator(ctx, 1)
+	// Start background aggregator and sweepers
+	rateLimiter.StartBackgroundAggregator(ctx)
+	l1Cache.StartSweeper(ctx)
 
 	// Start internal diagnostics server on :6060 (Liveness probe logic here)
 	go func() {
@@ -99,24 +111,38 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("OK"))
 		})
+		// Mount pprof
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+		// Mount Prometheus metrics
 		mux.Handle("/metrics", promhttp.Handler())
-		log.Println("Starting diagnostics server on :6060 (Liveness Probes & Metrics)")
-		if err := http.ListenAndServe(":6060", mux); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Diagnostics server failed: %v", err)
+
+		metricsPort := os.Getenv("METERGATE_METRICS_PORT")
+		if metricsPort == "" {
+			metricsPort = "6060"
+		}
+		slog.Info("Starting diagnostics server", "port", metricsPort)
+		if err := http.ListenAndServe(":"+metricsPort, mux); err != nil && err != http.ErrServerClosed {
+			slog.Error("Diagnostics server failed", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	// Wait for termination signal
 	<-ctx.Done()
-	log.Println("Shutdown signal received, draining traffic...")
+	slog.Info("Shutdown signal received, draining traffic...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	for _, srv := range servers {
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			log.Printf("Server forced to shutdown: %v", err)
+			slog.Error("Server forced to shutdown", "error", err)
 		}
 	}
-	log.Println("All servers gracefully stopped.")
+	slog.Info("All servers gracefully stopped.")
 }

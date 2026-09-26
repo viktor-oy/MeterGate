@@ -81,6 +81,14 @@ func LoadConfig(path string) (*MeterGateConfig, error) {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
+	for planName, plan := range cfg.Plans {
+		for groupName, group := range plan.Groups {
+			if group.Unit != "second" && group.Unit != "minute" && group.Unit != "hour" {
+				return nil, fmt.Errorf("invalid unit '%s' in plan '%s' group '%s': must be second, minute, or hour", group.Unit, planName, groupName)
+			}
+		}
+	}
+
 
 
 	if cfg.Proxy.UpstreamUrl == "" {

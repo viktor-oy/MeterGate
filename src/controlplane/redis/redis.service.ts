@@ -2,15 +2,15 @@ import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import Redis, { Cluster } from 'ioredis';
 
 
-
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   public readonly client: Redis | Cluster;
 
   constructor() {
     const urls = (process.env.REDIS_URL ?? 'redis://localhost:6379').split(',');
-    
-    if (urls.length > 1) {
+    const isCluster = process.env.REDIS_CLUSTER_MODE === 'true' || urls.length > 1;
+
+    if (isCluster) {
       this.client = new Redis.Cluster(urls, {
         redisOptions: { maxRetriesPerRequest: 2 }
       });
@@ -25,8 +25,6 @@ export class RedisService implements OnModuleDestroy {
   onModuleDestroy(): void {
     this.client.disconnect();
   }
-
-
 
   async getJson(key: string): Promise<unknown> {
     const value = await this.client.get(key);

@@ -7,13 +7,16 @@ x-metergate-env: &metergate-env
   METERGATE_KEY_HASH_SECRET: local-demo-secret-change-me
   DATABASE_URL: postgresql://metergate:metergate@postgres:5432/metergate?schema=public
   REDIS_URL: redis://redis:6379
+  REDIS_CLUSTER_MODE: ${REDIS_CLUSTER_MODE:-false}
   LOG_LEVEL: info
 
 services:
-  metergate:
+  controlplane:
     build:
       context: ..
       dockerfile: src/controlplane/Dockerfile
+    deploy:
+      replicas: ${CP_REPLICAS:-1}
     environment:
       <<: *metergate-env
     depends_on:
@@ -22,22 +25,25 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "3000-3010:3000"
-      - "9464:9464"
+      - "3000-3005:3000"
+      - "9464-9469:9464"
 
   dataplane:
     build:
       context: ..
       dockerfile: src/dataplane/Dockerfile
+    deploy:
+      replicas: ${DP_REPLICAS:-1}
     environment:
-      - REDIS_HOST=redis
+      - REDIS_HOST=redis:6379
       - METERGATE_CONFIG_PATH=/app/config/metergate.yml
       - DISABLE_ZERO_ALLOC=false
+      - METERGATE_KEY_HASH_SECRET=${METERGATE_KEY_HASH_SECRET:-local-demo-secret-change-me}
     volumes:
-      - ../config:/app/config:ro
+      - ./metergate.yml:/app/config/metergate.yml:ro
     ports:
-      - "8080:8080" # Proxy Port
-      - "6060:6060" # Internal Metrics & Pprof Port
+      - "8080-8085:8080" # Proxy Port
+      - "6060-6065:6060" # Internal Metrics & Pprof Port
     depends_on:
       redis:
         condition: service_healthy

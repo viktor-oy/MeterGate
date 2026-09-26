@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"testing"
 	"time"
 
@@ -60,17 +61,21 @@ func TestCoreEngine_Evaluate_Unit(t *testing.T) {
 		},
 	}
 
-	l1 := cache.NewL1Cache()
+	l1Cache := cache.NewL1Cache(30)
 	mockRedis := &mockRedisClient{
 		mockData: make(map[string]string),
 	}
 	rl := policy.NewRateLimiter(mockRedis)
-	engine := policy.NewCoreEngine(cfg, l1, rl, mockRedis)
+	os.Setenv("METERGATE_KEY_HASH_SECRET", "test-secret")
+	engine, err := policy.NewCoreEngine(cfg, l1Cache, rl, mockRedis)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
 	ctx := context.Background()
 
 	// 1. Pre-seed the mock L2 Redis cache
 	apiKey := "valid-key"
-	secret := "local-demo-secret-change-me"
+	secret := "test-secret"
 	h := sha256.New()
 	h.Write([]byte(secret + ":" + apiKey))
 	keyHash := hex.EncodeToString(h.Sum(nil))
@@ -167,16 +172,16 @@ func TestRateLimiter_CheckAndRecord_Unit(t *testing.T) {
 
 	// Before aggregator sweeps, the cache is 0. 
 	// Limit is 10, so it should be allowed.
-	allowed, remaining := rl.CheckAndRecord(ctx, "tenant-1", "route-1", 1, 10)
+	allowed, remaining := rl.CheckAndRecord(ctx, "tenant-test", "route-1", 1, 10, 60)
 	assert.True(t, allowed)
 	assert.Equal(t, 9, remaining)
 
 	// Inject sum 10 into mock data for the background aggregator to pick up
 	mockRedis.mockData["metergate:rate:tenant-1:route-1:"+time.Now().Format("20060102")] = "10"
 	
-	rl.Track("tenant-1", "route-1")
+	rl.Track("tenant-test", "route-1", 1, 60)
 	cancelCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	
-	rl.StartBackgroundAggregator(cancelCtx, 1)
+	rl.StartBackgroundAggregator(cancelCtx)
 }

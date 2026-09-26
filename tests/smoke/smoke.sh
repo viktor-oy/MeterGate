@@ -3,115 +3,120 @@ set -e
 
 echo "Running Control Plane Smoke Test (Binary Blackbox)..."
 
-# Ensure environment is set for the smoke test
-export METERGATE_PORT=3000
+export CP_REPLICAS=${CP_REPLICAS:-1}
+export DP_REPLICAS=${DP_REPLICAS:-1}
+
 export METERGATE_CONFIG_PATH="infra/metergate.yml"
 export DATABASE_URL=${DATABASE_URL:-"postgresql://metergate:metergate@localhost:5432/metergate?schema=public"}
 export REDIS_URL=${REDIS_URL:-"redis://localhost:6379"}
+export METERGATE_KEY_HASH_SECRET="local-demo-secret-change-me"
 
-# Check if the server is already running (e.g. via docker-compose)
-if curl -s http://localhost:$METERGATE_PORT/health > /dev/null; then
-    echo "Server is already running on port $METERGATE_PORT. Testing existing instance..."
-    SERVER_PID=""
-else
-    # Build the Control Plane
-    npm run build
+CP_PIDS=""
+DP_PIDS=""
 
-    # Start the compiled binary in the background
-    node dist/src/controlplane/main.js &
-    SERVER_PID=$!
-fi
+	npm run build
+	for (( i=0; i<CP_REPLICAS; i++ )); do
+		PORT=$((3100 + i))
+		echo "Starting Control Plane on port $PORT..."
+		METERGATE_PORT=$PORT node dist/src/controlplane/main.js &
+		CP_PIDS="$CP_PIDS $!"
+	done
 
-# Function to cleanup the background process on exit
 cleanup() {
-    if [ -n "$SERVER_PID" ]; then
-        echo "Stopping Control Plane (PID: $SERVER_PID)..."
-        kill $SERVER_PID || true
-    fi
-    if [ -n "$DP_PID" ]; then
-        echo "Stopping Data Plane (PID: $DP_PID)..."
-        kill $DP_PID || true
-    fi
+    for pid in $CP_PIDS; do
+        echo "Stopping Control Plane (PID: $pid)..."
+        kill $pid || true
+    done
+    for pid in $DP_PIDS; do
+        echo "Stopping Data Plane (PID: $pid)..."
+        kill $pid || true
+    done
 }
 trap cleanup EXIT
 
-# Wait for the server to be ready
-echo "Waiting for server to listen on port $METERGATE_PORT..."
-TIMEOUT=30
-while ! curl -s http://localhost:$METERGATE_PORT/health > /dev/null; do
-    TIMEOUT=$((TIMEOUT - 1))
-    if [ $TIMEOUT -eq 0 ]; then
-        echo "Error: Server failed to start within time."
-        exit 1
-    fi
-    sleep 1
+for (( i=0; i<CP_REPLICAS; i++ )); do
+    PORT=$((3100 + i))
+    echo "Waiting for Control Plane to listen on port $PORT..."
+    TIMEOUT=30
+    while ! curl -s http://localhost:$PORT/health > /dev/null; do
+        TIMEOUT=$((TIMEOUT - 1))
+        if [ $TIMEOUT -eq 0 ]; then
+            echo "Error: Server on $PORT failed to start within time."
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "Control Plane on $PORT is up!"
 done
-
-echo "Control Plane is up!"
 
 echo "Building and starting Data Plane..."
 cd src/dataplane
 export REDIS_HOST="localhost:6379"
 export DISABLE_ZERO_ALLOC="false"
-export METERGATE_CONFIG_PATH="../../infra/metergate.yml"
 mise x -- go build -o ../../bin/test-dataplane cmd/dataplane/main.go
-METERGATE_PORT=8080 ../../bin/test-dataplane &
-DP_PID=$!
 cd ../..
 
-echo "Waiting for Data Plane to listen on port 6060..."
-TIMEOUT=30
-while ! curl -s http://localhost:6060/health > /dev/null; do
-    TIMEOUT=$((TIMEOUT - 1))
-    if [ $TIMEOUT -eq 0 ]; then
-        echo "Error: Data Plane failed to start within time."
-        exit 1
-    fi
-    sleep 1
+for (( i=0; i<DP_REPLICAS; i++ )); do
+    PROXY_PORT=$((8180 + i))
+    METRICS_PORT=$((6160 + i))
+    echo "Starting Data Plane on proxy port $PROXY_PORT, metrics port $METRICS_PORT..."
+    METERGATE_PORT=$PROXY_PORT METERGATE_METRICS_PORT=$METRICS_PORT ./bin/test-dataplane &
+    DP_PIDS="$DP_PIDS $!"
 done
 
-echo "Data Plane is up!"
+for (( i=0; i<DP_REPLICAS; i++ )); do
+    METRICS_PORT=$((6160 + i))
+    echo "Waiting for Data Plane to listen on port $METRICS_PORT..."
+    TIMEOUT=30
+    while ! curl -s http://localhost:$METRICS_PORT/health > /dev/null; do
+        TIMEOUT=$((TIMEOUT - 1))
+        if [ $TIMEOUT -eq 0 ]; then
+            echo "Error: Data Plane on $METRICS_PORT failed to start within time."
+            exit 1
+        fi
+        sleep 1
+    done
+    echo "Data Plane on $METRICS_PORT is up!"
+done
 
-# Run Smoke Tests
+for (( i=0; i<CP_REPLICAS; i++ )); do
+    PORT=$((3100 + i))
+    echo "Testing GET /health (Control Plane on $PORT)..."
+    HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$PORT/health)
+    if [ "$HEALTH_STATUS" != "200" ]; then
+        echo "Failed: GET /health returned $HEALTH_STATUS"
+        exit 1
+    fi
+    echo "Pass: GET /health (Control Plane) returned 200 OK"
+    
+    echo "Testing POST /graphql (Control Plane on $PORT)..."
+    CHECK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' http://localhost:$PORT/graphql)
+    if [ "$CHECK_STATUS" != "400" ]; then
+        echo "Failed: POST /graphql returned $CHECK_STATUS (expected 400 Bad Request)"
+        exit 1
+    fi
+    echo "Pass: POST /graphql returned 400 Bad Request"
+done
 
-# 1. Healthcheck
-echo "Testing GET /health..."
-HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$METERGATE_PORT/health)
-if [ "$HEALTH_STATUS" != "200" ]; then
-    echo "Failed: GET /health returned $HEALTH_STATUS"
-    exit 1
-fi
-echo "Pass: GET /health (Control Plane) returned 200 OK"
+for (( i=0; i<DP_REPLICAS; i++ )); do
+    METRICS_PORT=$((6160 + i))
+    echo "Testing GET /health (Data Plane on $METRICS_PORT)..."
+    DP_HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$METRICS_PORT/health)
+    if [ "$DP_HEALTH_STATUS" != "200" ]; then
+        echo "Failed: GET /health (Data Plane) returned $DP_HEALTH_STATUS"
+        exit 1
+    fi
+    echo "Pass: GET /health (Data Plane) returned 200 OK"
 
-# 2. Data Plane Healthcheck
-echo "Testing GET /health (Data Plane on :6060)..."
-DP_HEALTH_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/health)
-if [ "$DP_HEALTH_STATUS" != "200" ]; then
-    echo "Failed: GET /health (Data Plane) returned $DP_HEALTH_STATUS"
-    exit 1
-fi
-echo "Pass: GET /health (Data Plane) returned 200 OK"
+    echo "Testing GET /metrics (Data Plane on $METRICS_PORT)..."
+    DP_METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:$METRICS_PORT/metrics)
+    if [ "$DP_METRICS_STATUS" != "200" ]; then
+        echo "Failed: GET /metrics (Data Plane) returned $DP_METRICS_STATUS"
+        exit 1
+    fi
+    echo "Pass: GET /metrics (Data Plane) returned 200 OK"
+done
 
-# 3. Data Plane Metrics
-echo "Testing GET /metrics (Data Plane on :6060)..."
-DP_METRICS_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:6060/metrics)
-if [ "$DP_METRICS_STATUS" != "200" ]; then
-    echo "Failed: GET /metrics (Data Plane) returned $DP_METRICS_STATUS"
-    exit 1
-fi
-echo "Pass: GET /metrics (Data Plane) returned 200 OK"
-
-# 2. GraphQL Introspection Check (should return 400 since we aren't passing a valid query, but proves endpoint is alive)
-echo "Testing POST /graphql..."
-CHECK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST -H "Content-Type: application/json" -d '{}' http://localhost:$METERGATE_PORT/graphql)
-if [ "$CHECK_STATUS" != "400" ]; then
-    echo "Failed: POST /graphql returned $CHECK_STATUS (expected 400 Bad Request)"
-    exit 1
-fi
-echo "Pass: POST /graphql returned 400 Bad Request"
-
-
-# 4. Database Seeding Check
 echo "Testing Database Seeding..."
 DB_CHECK=$(node -e "
 const { PrismaClient } = require('@prisma/client');

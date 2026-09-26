@@ -1,0 +1,102 @@
+{
+  "title": "MeterGate Production-Grade Observability",
+  "uid": "metergate-main",
+  "timezone": "browser",
+  "refresh": "5s",
+  "schemaVersion": 36,
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(instance)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "route_id",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(metergate_policy_decisions_total, route_id)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" }
+      },
+      {
+        "name": "plan",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(metergate_policy_decisions_total, plan)",
+        "includeAll": true,
+        "multi": true,
+        "allValue": ".*",
+        "current": { "text": "All", "value": "$__all" }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Data Plane Throughput (QPS)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(metergate_policy_decisions_total{instance=~\"$instance\", route_id=~\"$route_id\", plan=~\"$plan\"}[1m])) by (decision, reason)",
+          "legendFormat": "{{decision}} - {{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Policy Evaluation Latency (P99)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(metergate_policy_eval_duration_seconds_bucket{instance=~\"$instance\", route_id=~\"$route_id\", plan=~\"$plan\"}[1m])) by (le))",
+          "legendFormat": "P99 Policy Latency"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(metergate_proxy_upstream_duration_seconds_bucket{instance=~\"$instance\", route_id=~\"$route_id\", plan=~\"$plan\"}[1m])) by (le))",
+          "legendFormat": "P99 Upstream API Latency"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis L2 Latency (P99)",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(metergate_redis_operation_duration_seconds_bucket{instance=~\"$instance\"}[1m])) by (le, operation))",
+          "legendFormat": "P99 Redis {{operation}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Cache Operations (Hit Rate)",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum(rate(metergate_cache_operations_total{instance=~\"$instance\"}[1m])) by (cache_level, result)",
+          "legendFormat": "{{cache_level}} {{result}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Go Runtime: Heap Allocation",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "go_memstats_heap_alloc_bytes{instance=~\"$instance\"}",
+          "legendFormat": "Heap Allocated (Bytes)"
+        }
+      ]
+    }
+  ]
+}

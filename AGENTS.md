@@ -4,7 +4,7 @@ Compact rules for AI-assisted development in MeterGate. Keep changes small, test
 
 ## Mission
 
-MeterGate is a CV-grade, high-performance metering and quota enforcement gateway. It features a NestJS Control Plane for management and a Go Data Plane for high-velocity, zero-allocation rate limit enforcement. 
+MeterGate is a production-grade, high-performance metering and quota enforcement gateway. It features a NestJS Control Plane for management and a Go Data Plane for high-velocity, zero-allocation rate limit enforcement. 
 
 ## Non-Negotiables
 
@@ -33,7 +33,7 @@ MeterGate is a CV-grade, high-performance metering and quota enforcement gateway
 
 ## Observability
 
-Structured logs are written to stdout. The Data Plane exposes `/metrics` and `/debug/pprof` on an internal `:6060` port.
+Structured logs are written to stdout using `slog`. The Data Plane exposes Prometheus metrics (`/metrics`) and standard profiling endpoints (`/debug/pprof`) on an internal `:6060` port. A pre-configured Grafana dashboard connects to these metrics and is available on `http://localhost:3000` (admin:admin).
 
 ## Failure Boundaries
 

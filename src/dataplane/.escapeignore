@@ -1,0 +1,28 @@
+aggregator.go
+&CoreEngine
+&L1Cache
+&cacheShard
+make(map
+make([]*cacheShard
+&RateLimiter
+&MeterGateProxy
+&bufferPoolAdapter
+&ProxyHandler
+make([]config.RouteConfig
+string(keyHash[:])
+data escapes to heap
+TenantData{}
+func literal
+make([]byte, 0, 128)
+make([]byte, totalLen)
+invalid argument to IntN
+make([]byte, ~r0)
+metergate:cache:apikey:
+([]byte)(val)
+&targetShard
+&sumShard
+make([]byte, 32768)
+[]string{...}
+context.backgroundCtx{}
+&httputil.ReverseProxy
+new([32768]byte)

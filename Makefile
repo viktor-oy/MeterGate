@@ -1,9 +1,29 @@
 # Use mise for environment management if it's installed, otherwise fallback to system tools
 MISE_EXEC ?= $(shell command -v mise >/dev/null 2>&1 && echo "mise x -- " || echo "")
 
-COMPOSE_ARGS := -f infra/docker-compose.infra.yml -f infra/docker-compose.common.yml
+CP_REPLICAS ?= 1
+DP_REPLICAS ?= 1
+CLUSTER_MODE ?= 0
 
-.PHONY: help test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy dev
+ifneq ($(CP_REPLICAS), 1)
+  CLUSTER_MODE = 1
+endif
+ifneq ($(DP_REPLICAS), 1)
+  CLUSTER_MODE = 1
+endif
+
+ifeq ($(CLUSTER_MODE), 1)
+  export REDIS_CLUSTER_MODE := true
+  INFRA_COMPOSE := infra/docker-compose.cluster.yml
+  DEPS_TARGETS := postgres redis redis-node-2 redis-node-3 redis-cluster-init prometheus grafana
+else
+  INFRA_COMPOSE := infra/docker-compose.infra.yml
+  DEPS_TARGETS := postgres redis prometheus grafana
+endif
+
+COMPOSE_ARGS := -f $(INFRA_COMPOSE) -f infra/docker-compose.common.yml
+
+.PHONY: help test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy dev test-telemetry
 
 help:
 	@printf '%s\n' "MeterGate targets: test test-unit test-intg test-cp test-dp smoke-test infra-up infra-deps-up infra-down infra-deps-down db-migrate-dev db-migrate-deploy"
@@ -21,7 +41,7 @@ infra-down:
 
 infra-deps-up:
 	@echo "Starting infrastructure dependencies only..."
-	docker-compose $(COMPOSE_ARGS) up -d postgres redis
+	docker-compose $(COMPOSE_ARGS) up -d $(DEPS_TARGETS)
 	@echo "Waiting for databases to initialize..."
 	sleep 5
 	@echo "Applying database schema and seeding..."
@@ -30,7 +50,7 @@ infra-deps-up:
 
 infra-deps-down:
 	@echo "Stopping infrastructure dependencies only..."
-	docker-compose $(COMPOSE_ARGS) rm -f -s -v postgres redis
+	docker-compose $(COMPOSE_ARGS) rm -f -s -v $(DEPS_TARGETS)
 
 db-migrate-dev:
 	@echo "Creating Prisma migration..."
@@ -70,3 +90,16 @@ test-intg: test-cp-intg test-dp-intg
 smoke-test: infra-deps-up
 	@echo "Running smoke tests..."
 	./tests/smoke/smoke.sh
+
+TEST_API_KEY ?= $(shell node -e "console.log(require('./seed.json').apiKey.plaintext)")
+TEST_HEADER_NAME ?= x-api-key
+
+test-telemetry:
+	@echo "Running simple load generator to populate telemetry dashboard..."
+	@for i in {1..50}; do \
+		curl -s -o /dev/null -w "Req 1: %{http_code} " -H "$(TEST_HEADER_NAME): $(TEST_API_KEY)" http://localhost:8080/graphql; \
+		curl -s -o /dev/null -w "Req 2: %{http_code} " -H "$(TEST_HEADER_NAME): $(TEST_API_KEY)" http://localhost:8080/tickets; \
+		curl -s -o /dev/null -w "Req 3: %{http_code}\n" http://localhost:8080/graphql; \
+		sleep 0.1; \
+	done
+	@echo "Load generation complete. Check Grafana at http://localhost:3000 (admin:admin)"

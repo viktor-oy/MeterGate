@@ -36,10 +36,10 @@ func TestRateLimiter_Integration_Accumulate(t *testing.T) {
 	defer cancel()
 
 	// 1. Start accumulator with known tenants and routes
-	rl.Track("tenant-int", "route-int")
 	shardCount := 3
+	rl.Track("tenant-int", "route-int", shardCount, 60)
 
-	rl.StartBackgroundAggregator(ctx, shardCount)
+	rl.StartBackgroundAggregator(ctx)
 
 	// 2. Simulate raw traffic into the Redis salts (shard_0, shard_1, shard_2)
 	now := time.Now().Unix()
@@ -57,15 +57,15 @@ func TestRateLimiter_Integration_Accumulate(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// 3. Verify L1 cache has the accurate sum (5 + 10 + 15 = 30)
-	cacheKey := "tenant-int:route-int"
-	val, ok := rl.sumCache.Load(cacheKey)
-	if !ok {
-		t.Fatalf("Expected L1 cache to contain %s, but it was missing", cacheKey)
-	}
+	key := TargetKey{TenantID: "tenant-int", RouteID: "route-int"}
+	sumShard := rl.sumShards[rl.getShardIndex("tenant-int", "route-int")]
+	
+	sumShard.RLock()
+	sum, exists := sumShard.data[key]
+	sumShard.RUnlock()
 
-	sum, ok := val.(int)
-	if !ok {
-		t.Fatalf("Expected L1 cache value to be int")
+	if !exists {
+		t.Fatalf("Expected sumShards to contain tenant-int/route-int, but it was missing")
 	}
 
 	if sum != 30 {

@@ -12,7 +12,6 @@ done
 CP_PORT=3000
 DP_PORT=8080
 
-
 if [ "$OVERRIDE" -eq 1 ]; then
     echo "Checking and terminating processes on required ports..."
     # Nuke any orphaned parent watcher processes (the Hydra problem)
@@ -45,12 +44,13 @@ make infra-deps-up
 
 echo "Starting Control Plane..."
 export DATABASE_URL="postgresql://metergate:metergate@localhost:5432/metergate?schema=public"
+export METERGATE_PORT=$CP_PORT
 mise x -- npm run start:dev &
 CP_PID=$!
 
 echo "Starting Data Plane..."
 # We pass environment variables so data plane runs on its dedicated port
-cd src/dataplane && METERGATE_PORT=$DP_PORT METERGATE_CONFIG_PATH="../../infra/metergate.yml" REDIS_HOST="localhost:6379" mise x -- go run cmd/dataplane/main.go &
+cd src/dataplane && METERGATE_PORT=$DP_PORT METERGATE_CONFIG_PATH="../../infra/metergate.yml" REDIS_HOST="localhost:6379" METERGATE_KEY_HASH_SECRET="local-demo-secret-change-me" mise x -- go run cmd/dataplane/main.go &
 DP_PID=$!
 
 echo ""

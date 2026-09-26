@@ -1,6 +1,6 @@
 # MeterGate
 
-MeterGate is a CV-grade, high-performance API metering and quota enforcement gateway. It demonstrates FAANG-level engineering standards by strictly separating management operations from the high-velocity data path.
+MeterGate is a production-grade, high-performance API metering and quota enforcement gateway. It demonstrates FAANG-level engineering standards by strictly separating management operations from the high-velocity data path.
 
 ## System Architecture
 
@@ -23,7 +23,7 @@ graph TB
         subgraph "MeterGate Data Plane (Go)"
             HANDLER["net/http Handler<br/>Proxy & /v1/check"]
             POLICY["Policy Engine<br/>(Zero-Alloc Hot Path)"]
-            L1["L1 Sharded Map<br/>(atomic.Pointer swap)"]
+            L1["L1 Sharded Map"]
             RL["Rate Limiter<br/>(atomic counters + Redis)"]
         end
 
@@ -117,7 +117,22 @@ make infra-up
 # Force a rebuild of the Docker images before booting (if dependencies changed)
 make infra-up BUILD=1
 
-# Native Development Workflow (Fastest iteration speed)
+### Scaling & Clustering
+
+MeterGate supports full native and Docker-based clustering to test distributed behaviors (e.g. Rate Limit Aggregation). You can scale the Control Plane and Data Plane using environment variables.
+
+```bash
+# Boot 3 Control Planes and 3 Data Planes via Docker Compose
+CP_REPLICAS=3 DP_REPLICAS=3 make infra-up
+
+# Run the Blackbox Smoke Test suite against a native 3x3 cluster
+CP_REPLICAS=3 DP_REPLICAS=3 make smoke-test
+```
+*Note: In Docker, ports are mapped dynamically (e.g. 8080-8085). In Native (`smoke-test`), the script dynamically increments and tests all individual host ports.*
+
+Setting `CP_REPLICAS > 1` or `DP_REPLICAS > 1` will automatically evaluate `CLUSTER_MODE=1` in the Makefile. This provisions a full Redis Cluster and injects `REDIS_CLUSTER_MODE=true` to switch the Control Plane's `ioredis` client into cluster-aware routing.
+
+### Native Development Workflow
 # Boots only Redis & Postgres in Docker, and runs the Go and NestJS services natively
 make dev
 
@@ -138,4 +153,13 @@ make test
   *(Note: You can use the Swagger UI to interactively test the system by dynamically provisioning new Tenants and API Keys).*
 - **OpenAPI JSON:** [http://localhost:3000/docs-json](http://localhost:3000/docs-json)
 - **GraphQL Playground:** [http://localhost:3000/graphql](http://localhost:3000/graphql)
+### Observability
 
+- **Prometheus Metrics:** [http://localhost:6060/metrics](http://localhost:6060/metrics) (Exposed by the Go Data Plane)
+- **Go pprof Profiling:** [http://localhost:6060/debug/pprof](http://localhost:6060/debug/pprof) (Exposed by the Go Data Plane)
+- **Grafana Dashboard:** [http://localhost:3001](http://localhost:3001) (Default Credentials: admin / admin)
+
+To populate the Grafana dashboard with traffic, run the simple load generator:
+```bash
+make test-telemetry
+```

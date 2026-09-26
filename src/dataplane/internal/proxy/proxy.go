@@ -5,6 +5,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"sync"
+	"unsafe"
 )
 
 // MeterGateProxy wraps httputil.ReverseProxy and implements buffer pooling.
@@ -13,12 +14,11 @@ type MeterGateProxy struct {
 	DisableZeroAlloc bool
 }
 
-// pooledBuffer is a sync.Pool that provides reusable byte slices.
+// pooledBuffer is a sync.Pool that provides reusable byte arrays.
 var bufferPool = sync.Pool{
 	New: func() interface{} {
 		// Pre-allocate a 32KB buffer, matching standard io.Copy buffers.
-		b := make([]byte, 32*1024)
-		return &b
+		return new([32 * 1024]byte)
 	},
 }
 
@@ -26,16 +26,15 @@ var bufferPool = sync.Pool{
 type bufferPoolAdapter struct{}
 
 func (b *bufferPoolAdapter) Get() []byte {
-	bufPtr := bufferPool.Get().(*[]byte)
-	buf := *bufPtr
-	return buf[:cap(buf)] // Ensure we return the full capacity slice
+	arrPtr := bufferPool.Get().(*[32 * 1024]byte)
+	return (*arrPtr)[:]
 }
 
 func (b *bufferPoolAdapter) Put(buf []byte) {
-	// Strict slice length resetting to prevent tenant data leakage.
-	// We reset length to 0 but keep capacity.
-	buf = buf[:0]
-	bufferPool.Put(&buf)
+	// Reconstruct the array pointer from the slice's underlying data pointer.
+	// This guarantees that the stack-allocated slice header `buf` does not escape to the heap.
+	arrPtr := (*[32 * 1024]byte)(unsafe.Pointer(unsafe.SliceData(buf)))
+	bufferPool.Put(arrPtr)
 }
 
 // NewMeterGateProxy creates a new proxy instance.
